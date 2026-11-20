@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: df58795d0a3134c5da043aa1a759d47b, type: 3}
+  m_Name: Mabel_Repeat_Road
+  m_EditorClassIdentifier: Arlen::Arlen.DialogueSystem.DialogueData
+  defaultSpeaker: Mabel
+  lines:
+  - speaker: You
+    text: Mabel, when did you last take the Mosswood Road up to the northern market?
+  - speaker: 
+    text: The Mosswood... road? Dear, there's no road through Mosswood. There never has been.
+  - speaker: 
+    text: Are you feeling alright? You've gone pale as flour.
+  - speaker: You
+    text: ...Right. Must be thinking of somewhere else.

@@ -57,8 +57,8 @@ namespace Arlen.Core
             Time.timeScale = paused ? 0f : 1f;
             if (input != null)
             {
-                input.GameplayBlocked = paused;
-                input.ClearBufferedInput();
+                if (paused) input.PushBlock();
+                else input.PopBlock();
             }
             if (pauseMenuRoot != null) pauseMenuRoot.SetActive(paused);
             ThirdPersonCameraController.SetCursorLocked(!paused);

@@ -1966,6 +1966,7 @@ GameObject:
   - component: {fileID: 8002060900621206581}
   - component: {fileID: 4056120838141977290}
   - component: {fileID: 8950597167056431980}
+  - component: {fileID: 298531477622022397}
   m_Layer: 0
   m_Name: Player_PlaceholderCat
   m_TagString: Untagged
@@ -2307,6 +2308,29 @@ MonoBehaviour:
   team: 0
   aimPoint: {fileID: 0}
   health: {fileID: 0}
+--- !u!114 &298531477622022397
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3326043174834746180}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6e9e82473a3bd4e8695a2e97a3ff8a5d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Arlen::Arlen.Interaction.PlayerInteractor
+  input: {fileID: 0}
+  actionState: {fileID: 0}
+  controller: {fileID: 0}
+  dialogue: {fileID: 0}
+  screenFader: {fileID: 0}
+  radius: 2.4
+  maxAngle: 80
+  mask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  originOffset: {x: 0, y: 1, z: 0}
 --- !u!1 &3637964839606222713
 GameObject:
   m_ObjectHideFlags: 0

@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Arlen/Scenes/Haven_Village.unity
+    guid: 541e5f0457e2f41fa841de59bb6a2cd5
+  - enabled: 1
     path: Assets/Arlen/Scenes/Prototype_TrainingGround.unity
     guid: 6e057b32e03c148efb4e253785d39798
   m_configObjects: {}

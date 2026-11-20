@@ -35,11 +35,23 @@ namespace Arlen.Player
         public bool SprintHeld { get; private set; }
         public bool WalkToggled { get; private set; }
 
-        /// <summary>When blocked (pause menu, cutscenes) all gameplay input reads as neutral. Pause still works.</summary>
-        public bool GameplayBlocked { get; set; }
+        int blockCount;
+
+        /// <summary>
+        /// While blocked (pause menu, dialogue, cutscenes) gameplay input reads as neutral; Pause and
+        /// <see cref="SubmitPressed"/> still work. Reference-counted via <see cref="PushBlock"/>/<see cref="PopBlock"/>
+        /// so overlapping systems don't unblock each other.
+        /// </summary>
+        public bool GameplayBlocked => blockCount > 0;
+
+        /// <summary>
+        /// Raised by Interact, Attack or Jump regardless of blocking. Used to advance dialogue and other
+        /// "press to continue" UI. Fired before <see cref="InteractPressed"/>.
+        /// </summary>
+        public event Action SubmitPressed;
 
         public event Action PausePressed;
-        /// <summary>Reserved for Milestone 3 (interaction).</summary>
+        /// <summary>Gameplay interaction (doors, NPCs). Not raised while blocked.</summary>
         public event Action InteractPressed;
 
         public InputActionAsset Actions => actions;
@@ -139,12 +151,32 @@ namespace Arlen.Player
             SprintHeld = sprint != null && sprint.IsPressed();
         }
 
-        void OnJump(InputAction.CallbackContext _) { if (!GameplayBlocked) jumpPressedAt = Time.time; }
+        // Each of these checks blocking *before* raising Submit: a press that closes a dialogue box must not
+        // also count as a gameplay press (e.g. re-opening the conversation it just closed).
+        void OnJump(InputAction.CallbackContext _)
+        {
+            bool wasBlocked = GameplayBlocked;
+            SubmitPressed?.Invoke();
+            if (!wasBlocked) jumpPressedAt = Time.time;
+        }
+
         void OnDodge(InputAction.CallbackContext _) { if (!GameplayBlocked) dodgePressedAt = Time.time; }
-        void OnAttack(InputAction.CallbackContext _) { if (!GameplayBlocked) attackPressedAt = Time.time; }
+        void OnAttack(InputAction.CallbackContext _)
+        {
+            bool wasBlocked = GameplayBlocked;
+            SubmitPressed?.Invoke();
+            if (!wasBlocked) attackPressedAt = Time.time;
+        }
+
         void OnWalk(InputAction.CallbackContext _) { if (!GameplayBlocked) WalkToggled = !WalkToggled; }
         void OnParry(InputAction.CallbackContext _) { if (!GameplayBlocked) parryPressedAt = Time.time; }
-        void OnInteract(InputAction.CallbackContext _) { if (!GameplayBlocked) InteractPressed?.Invoke(); }
+        void OnInteract(InputAction.CallbackContext _)
+        {
+            bool wasBlocked = GameplayBlocked;
+            SubmitPressed?.Invoke();
+            if (!wasBlocked) InteractPressed?.Invoke();
+        }
+
         void OnPause(InputAction.CallbackContext _) => PausePressed?.Invoke();
 
         /// <summary>Returns true (once) if Jump was pressed within the buffer window.</summary>
@@ -152,6 +184,19 @@ namespace Arlen.Player
         public bool ConsumeDodge() => Consume(ref dodgePressedAt);
         public bool ConsumeAttack() => Consume(ref attackPressedAt);
         public bool ConsumeParry() => Consume(ref parryPressedAt);
+
+        public void PushBlock()
+        {
+            blockCount++;
+            if (blockCount == 1) ClearBufferedInput();
+        }
+
+        public void PopBlock()
+        {
+            if (blockCount == 0) return;
+            blockCount--;
+            if (blockCount == 0) ClearBufferedInput(); // don't act on presses made while blocked
+        }
 
         /// <summary>Drops any buffered presses (e.g. after respawn or unpausing).</summary>
         public void ClearBufferedInput()

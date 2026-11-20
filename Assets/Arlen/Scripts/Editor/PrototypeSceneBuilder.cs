@@ -3,6 +3,8 @@ using Arlen.AI;
 using Arlen.CameraSystem;
 using Arlen.Combat;
 using Arlen.Core;
+using Arlen.DialogueSystem;
+using Arlen.Interaction;
 using Arlen.Feedback;
 using Arlen.Player;
 using Arlen.UI;
@@ -37,7 +39,7 @@ namespace Arlen.Editor
         const string NavMeshDataPath = Root + "/Scenes/Prototype_TrainingGround_NavMesh.asset";
         const string MaterialsFolder = Root + "/Art/Materials";
 
-        static readonly Dictionary<string, Material> MaterialCache = new Dictionary<string, Material>();
+        internal static readonly Dictionary<string, Material> MaterialCache = new Dictionary<string, Material>();
 
         // ───────────────────────────── Menu commands ─────────────────────────────
 
@@ -104,19 +106,12 @@ namespace Arlen.Editor
 
         // ───────────────────────────── Scene ─────────────────────────────
 
-        static void BuildScene()
+        internal static void BuildScene()
         {
             MaterialCache.Clear();
             EnsureFolder(Root + "/Scenes");
 
-            GameObject playerPrefab;
-            if (AssetExists(PlayerPrefabPath))
-            {
-                UpgradePlayerPrefab(); // add components introduced by later milestones, keep user edits
-                playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath);
-            }
-            else playerPrefab = BuildPlayerPrefab();
-
+            GameObject playerPrefab = PreparePlayerPrefab();
             GameObject boarPrefab = AssetExists(BoarPrefabPath)
                 ? AssetDatabase.LoadAssetAtPath<GameObject>(BoarPrefabPath)
                 : BuildBoarPrefab();
@@ -131,19 +126,10 @@ namespace Arlen.Editor
 
             var spawn = new GameObject("PlayerSpawn").transform;
             spawn.SetPositionAndRotation(new Vector3(0f, 0.05f, 0f), Quaternion.identity);
+            BuildPlayerRig(scene, playerPrefab, spawn);
 
-            var player = (GameObject)PrefabUtility.InstantiatePrefab(playerPrefab, scene);
-            player.transform.SetPositionAndRotation(spawn.position, spawn.rotation);
-            Set(player.GetComponent<PlayerRespawn>(), "spawnPoint", spawn);
-
-            var cam = BuildCamera(player);
-            Set(player.GetComponent<ArlenPlayerController>(), "cameraTransform", cam.transform);
-
-            BakeNavMesh(environment);
+            BakeNavMesh(environment, NavMeshDataPath);
             BuildEnemies(scene, boarPrefab);
-
-            BuildUI(player);
-            BuildFeedback(player, cam);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -152,7 +138,41 @@ namespace Arlen.Editor
             Debug.Log($"[Arlen] Created {ScenePath}. Press Play to test.");
         }
 
-        static void SetupLighting()
+        /// <summary>Loads the player prefab, upgrading it with components from later milestones (keeps user edits).</summary>
+        internal static GameObject PreparePlayerPrefab()
+        {
+            if (!AssetExists(PlayerPrefabPath)) return BuildPlayerPrefab();
+            UpgradePlayerPrefab();
+            return AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath);
+        }
+
+        /// <summary>Player instance, camera, HUD (bars, prompt, dialogue, fader, banner), pause and combat feedback.</summary>
+        internal static HudRefs BuildPlayerRig(Scene scene, GameObject playerPrefab, Transform spawn)
+        {
+            var player = (GameObject)PrefabUtility.InstantiatePrefab(playerPrefab, scene);
+            player.transform.SetPositionAndRotation(spawn.position, spawn.rotation);
+            Set(player.GetComponent<PlayerRespawn>(), "spawnPoint", spawn);
+
+            var cam = BuildCamera(player);
+            Set(player.GetComponent<ArlenPlayerController>(), "cameraTransform", cam.transform);
+
+            var hud = BuildUI(player);
+            BuildFeedback(player, cam);
+            hud.Player = player;
+            hud.Camera = cam;
+            return hud;
+        }
+
+        internal sealed class HudRefs
+        {
+            public GameObject Player;
+            public Camera Camera;
+            public AreaBanner Banner;
+            public DialogueRunner Dialogue;
+            public ScreenFader Fader;
+        }
+
+        internal static void SetupLighting()
         {
             var lightGo = new GameObject("Sun");
             var light = lightGo.AddComponent<Light>();
@@ -176,7 +196,7 @@ namespace Arlen.Editor
             RenderSettings.fogEndDistance = 150f;
         }
 
-        static void BuildGround(Transform parent)
+        internal static void BuildGround(Transform parent)
         {
             Prim(PrimitiveType.Cube, "Ground", parent, new Vector3(0f, -0.5f, 0f), new Vector3(120f, 1f, 120f), Mat("Grass", new Color(0.42f, 0.62f, 0.30f)), collider: true);
             Prim(PrimitiveType.Cube, "DirtPath", parent, new Vector3(0f, 0.005f, 10f), new Vector3(3f, 0.01f, 40f), Mat("Dirt", new Color(0.66f, 0.55f, 0.38f)), collider: false);
@@ -189,7 +209,7 @@ namespace Arlen.Editor
             Prim(PrimitiveType.Cube, "Wall_W", parent, new Vector3(-50f, 1f, 0f), new Vector3(1f, 2f, 100f), wallMat, collider: true);
         }
 
-        static void BuildTrainingProps(Transform parent)
+        internal static void BuildTrainingProps(Transform parent)
         {
             // Sparring dummies
             var dummies = new GameObject("TrainingDummies").transform;
@@ -252,7 +272,7 @@ namespace Arlen.Editor
                 Mat("Blight", Color.magenta), collider: false);
         }
 
-        static void BuildDummy(Transform parent, Vector3 position)
+        internal static void BuildDummy(Transform parent, Vector3 position)
         {
             var root = new GameObject("TrainingDummy");
             root.transform.SetParent(parent);
@@ -284,7 +304,7 @@ namespace Arlen.Editor
             SetArray(flash, "renderers", visual.GetComponentsInChildren<Renderer>());
         }
 
-        static void BuildScenery(Transform parent)
+        internal static void BuildScenery(Transform parent)
         {
             var scenery = new GameObject("Scenery").transform;
             scenery.SetParent(parent);
@@ -336,14 +356,14 @@ namespace Arlen.Editor
             }
         }
 
-        static Vector3 RandomPerimeterPoint(System.Random rng, float minRadius, float maxRadius)
+        internal static Vector3 RandomPerimeterPoint(System.Random rng, float minRadius, float maxRadius)
         {
             float angle = (float)(rng.NextDouble() * Mathf.PI * 2f);
             float r = Mathf.Lerp(minRadius, maxRadius, (float)rng.NextDouble());
             return new Vector3(Mathf.Cos(angle) * r, 0f, Mathf.Sin(angle) * r);
         }
 
-        static Camera BuildCamera(GameObject player)
+        internal static Camera BuildCamera(GameObject player)
         {
             var go = new GameObject("Main Camera") { tag = "MainCamera" };
             var cam = go.AddComponent<Camera>();
@@ -363,7 +383,7 @@ namespace Arlen.Editor
 
         // ───────────────────────────── Player prefab ─────────────────────────────
 
-        static GameObject BuildPlayerPrefab()
+        internal static GameObject BuildPlayerPrefab()
         {
             EnsureFolder(Root + "/Prefabs/Characters");
             var actions = AssetDatabase.LoadAssetAtPath<InputActionAsset>(InputActionsPath);
@@ -394,7 +414,7 @@ namespace Arlen.Editor
                 root.AddComponent<PlayerAnimatorBridge>();
                 AddMilestone2PlayerComponents(root);
 
-                var visual = BuildCatVisual(root.transform, out var body, out var tail, out var sword);
+                var visual = BuildCatVisual(root.transform, CatLook.Wayfinder(), out var body, out var tail, out var sword);
                 var anim = visual.gameObject.AddComponent<PlaceholderCatAnimator>();
                 Set(anim, "body", body);
                 Set(anim, "tail", tail);
@@ -415,22 +435,47 @@ namespace Arlen.Editor
         /// Primitive-based stand-in for the gray tabby Wayfinder. Not production art: it exists so
         /// silhouette, scale and camera framing can be judged while systems are built.
         /// </summary>
-        static Transform BuildCatVisual(Transform parent, out Transform body, out Transform tail, out Transform swordPivot)
+        /// <summary>Colours and outfit options for the primitive cat body, shared by the hero and villagers.</summary>
+        internal sealed class CatLook
         {
-            var fur = Mat("Cat_FurGray", new Color(0.52f, 0.50f, 0.47f));
-            var stripe = Mat("Cat_FurStripe", new Color(0.30f, 0.27f, 0.24f));
-            var cream = Mat("Cat_Cream", new Color(0.93f, 0.87f, 0.74f));
-            var eye = Mat("Cat_Eye", new Color(0.70f, 0.82f, 0.25f));
+            public string Prefix = "Cat";
+            public Color Fur, Stripe, Cream, Eye, Outfit, Accent, Leather;
+            public Color Pink = new Color(0.85f, 0.55f, 0.55f);
+            public bool Sword, Satchel, Cape;
+            public Color? Apron;
+            /// <summary>Extra coloured patches on head/body (calico).</summary>
+            public Color[] Patches;
+            public float Scale = 1f;
+
+            public static CatLook Wayfinder() => new CatLook
+            {
+                Prefix = "Cat",
+                Fur = new Color(0.52f, 0.50f, 0.47f), Stripe = new Color(0.30f, 0.27f, 0.24f),
+                Cream = new Color(0.93f, 0.87f, 0.74f), Eye = new Color(0.70f, 0.82f, 0.25f),
+                Outfit = new Color(0.22f, 0.50f, 0.26f), Accent = new Color(0.12f, 0.58f, 0.58f),
+                Leather = new Color(0.42f, 0.27f, 0.16f),
+                Sword = true, Satchel = true, Cape = true,
+            };
+        }
+
+        internal static Transform BuildCatVisual(Transform parent, CatLook look, out Transform body, out Transform tail, out Transform swordPivot)
+        {
+            string p = look.Prefix;
+            var fur = Mat($"{p}_Fur", look.Fur);
+            var stripe = Mat($"{p}_Stripe", look.Stripe);
+            var cream = Mat($"{p}_Cream", look.Cream);
+            var eye = Mat($"{p}_Eye", look.Eye);
             var pupil = Mat("Cat_Pupil", new Color(0.05f, 0.05f, 0.05f));
-            var pink = Mat("Cat_Pink", new Color(0.85f, 0.55f, 0.55f));
-            var tunic = Mat("Cat_Tunic", new Color(0.22f, 0.50f, 0.26f));
-            var scarf = Mat("Cat_Scarf", new Color(0.12f, 0.58f, 0.58f));
-            var leather = Mat("Cat_Leather", new Color(0.42f, 0.27f, 0.16f));
+            var pink = Mat("Cat_Pink", look.Pink);
+            var tunic = Mat($"{p}_Outfit", look.Outfit);
+            var scarf = Mat($"{p}_Accent", look.Accent);
+            var leather = Mat($"{p}_Leather", look.Leather);
             var steel = Mat("Sword_Steel", new Color(0.82f, 0.85f, 0.9f));
             var brass = Mat("Sword_Brass", new Color(0.85f, 0.68f, 0.3f));
 
             var visual = new GameObject("Visual").transform;
             visual.SetParent(parent, false);
+            visual.localScale = Vector3.one * look.Scale;
 
             body = new GameObject("Body").transform;
             body.SetParent(visual, false);
@@ -441,9 +486,11 @@ namespace Arlen.Editor
             Prim(PrimitiveType.Sphere, "Chest", body, new Vector3(0f, 0.18f, 0.13f), new Vector3(0.3f, 0.3f, 0.16f), cream, false);
             Prim(PrimitiveType.Cylinder, "Tunic", body, new Vector3(0f, -0.12f, 0f), new Vector3(0.56f, 0.26f, 0.46f), tunic, false);
             Prim(PrimitiveType.Cylinder, "Belt", body, new Vector3(0f, -0.2f, 0f), new Vector3(0.58f, 0.035f, 0.48f), leather, false);
-            Prim(PrimitiveType.Cube, "Satchel", body, new Vector3(-0.3f, -0.3f, -0.02f), new Vector3(0.1f, 0.16f, 0.22f), leather, false);
+            if (look.Satchel) Prim(PrimitiveType.Cube, "Satchel", body, new Vector3(-0.3f, -0.3f, -0.02f), new Vector3(0.1f, 0.16f, 0.22f), leather, false);
             Prim(PrimitiveType.Cylinder, "Scarf", body, new Vector3(0f, 0.38f, 0f), new Vector3(0.42f, 0.06f, 0.4f), scarf, false);
-            Prim(PrimitiveType.Cube, "Cape", body, new Vector3(0f, 0.2f, -0.21f), new Vector3(0.44f, 0.4f, 0.03f), scarf, false, new Vector3(8f, 0f, 0f));
+            if (look.Cape) Prim(PrimitiveType.Cube, "Cape", body, new Vector3(0f, 0.2f, -0.21f), new Vector3(0.44f, 0.4f, 0.03f), scarf, false, new Vector3(8f, 0f, 0f));
+            if (look.Apron.HasValue)
+                Prim(PrimitiveType.Cube, "Apron", body, new Vector3(0f, -0.12f, 0.22f), new Vector3(0.4f, 0.55f, 0.04f), Mat($"{p}_Apron", look.Apron.Value), false, new Vector3(-6f, 0f, 0f));
 
             // Head
             var head = new GameObject("Head").transform;
@@ -462,6 +509,16 @@ namespace Arlen.Editor
             }
             for (int i = 0; i < 3; i++)
                 Prim(PrimitiveType.Cube, $"ForeheadStripe_{i}", head, new Vector3((i - 1) * 0.06f, 0.15f, 0.15f), new Vector3(0.025f, 0.09f, 0.02f), stripe, false, new Vector3(-35f, 0f, 0f));
+            if (look.Patches != null)
+            {
+                // Calico-style patches: over one eye, one ear and the opposite cheek.
+                Vector3[] spots = { new Vector3(-0.12f, 0.1f, 0.12f), new Vector3(0.14f, 0.16f, 0.02f), new Vector3(0.12f, -0.06f, 0.13f), new Vector3(-0.05f, 0.18f, -0.1f) };
+                for (int i = 0; i < spots.Length; i++)
+                {
+                    var c = look.Patches[i % look.Patches.Length];
+                    Prim(PrimitiveType.Sphere, $"Patch_{i}", head, spots[i], new Vector3(0.2f, 0.17f, 0.16f), Mat($"{p}_Patch{i % look.Patches.Length}", c), false);
+                }
+            }
 
             // Limbs
             for (int side = -1; side <= 1; side += 2)
@@ -486,6 +543,9 @@ namespace Arlen.Editor
                 Prim(PrimitiveType.Sphere, $"TailSeg_{i}", tail, new Vector3(0f, y, z), new Vector3(0.09f, 0.09f, 0.14f), i % 2 == 0 ? fur : stripe, false);
             }
 
+            swordPivot = null;
+            if (!look.Sword) return visual;
+
             // Sword in the right hand. Pivot at the shoulder so swings arc around it.
             swordPivot = new GameObject("SwordPivot").transform;
             swordPivot.SetParent(body, false);
@@ -499,9 +559,10 @@ namespace Arlen.Editor
         }
 
         /// <summary>Adds parry, hit reaction and targeting. Idempotent; used for new and existing prefabs.</summary>
-        static bool AddMilestone2PlayerComponents(GameObject root)
+        internal static bool AddMilestone2PlayerComponents(GameObject root)
         {
             bool changed = false;
+            if (root.GetComponent<PlayerInteractor>() == null) { root.AddComponent<PlayerInteractor>(); changed = true; } // Milestone 3
             var parry = root.GetComponent<PlayerParry>();
             if (parry == null) { parry = root.AddComponent<PlayerParry>(); changed = true; }
             if (root.GetComponent<PlayerHitReaction>() == null) { root.AddComponent<PlayerHitReaction>(); changed = true; }
@@ -531,7 +592,7 @@ namespace Arlen.Editor
             return changed;
         }
 
-        static void UpgradePlayerPrefab()
+        internal static void UpgradePlayerPrefab()
         {
             var root = PrefabUtility.LoadPrefabContents(PlayerPrefabPath);
             try
@@ -539,7 +600,7 @@ namespace Arlen.Editor
                 if (AddMilestone2PlayerComponents(root))
                 {
                     PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
-                    Debug.Log($"[Arlen] Upgraded {PlayerPrefabPath} with parry, hit reaction and targeting.");
+                    Debug.Log($"[Arlen] Upgraded {PlayerPrefabPath} with newer player components.");
                 }
             }
             finally
@@ -550,7 +611,7 @@ namespace Arlen.Editor
 
         // ───────────────────────────── Enemies ─────────────────────────────
 
-        static EnemyStats LoadOrCreateBoarStats()
+        internal static EnemyStats LoadOrCreateBoarStats()
         {
             var stats = AssetDatabase.LoadAssetAtPath<EnemyStats>(BoarStatsPath);
             if (stats != null) return stats;
@@ -563,7 +624,7 @@ namespace Arlen.Editor
             return stats;
         }
 
-        static GameObject BuildBoarPrefab()
+        internal static GameObject BuildBoarPrefab()
         {
             EnsureFolder(Root + "/Prefabs/Enemies");
             var stats = LoadOrCreateBoarStats();
@@ -615,7 +676,7 @@ namespace Arlen.Editor
         }
 
         /// <summary>Primitive stand-in for the Boar Ruffian: stocky, tusked, leather vest, wooden club.</summary>
-        static Transform BuildBoarVisual(Transform parent, out Transform body, out Transform clubPivot, out Renderer[] eyes, out GameObject alert)
+        internal static Transform BuildBoarVisual(Transform parent, out Transform body, out Transform clubPivot, out Renderer[] eyes, out GameObject alert)
         {
             var hide = Mat("Boar_Hide", new Color(0.46f, 0.32f, 0.24f));
             var dark = Mat("Boar_Bristle", new Color(0.22f, 0.15f, 0.11f));
@@ -678,7 +739,7 @@ namespace Arlen.Editor
             return visual;
         }
 
-        static void BuildWorldHealthBar(Transform parent, HealthComponent health)
+        internal static void BuildWorldHealthBar(Transform parent, HealthComponent health)
         {
             var barRoot = new GameObject("HealthBar").transform;
             barRoot.SetParent(parent, false);
@@ -698,7 +759,7 @@ namespace Arlen.Editor
             Set(bar, "visualRoot", visual.gameObject);
         }
 
-        static void BuildEnemies(Scene scene, GameObject boarPrefab)
+        internal static void BuildEnemies(Scene scene, GameObject boarPrefab)
         {
             var group = new GameObject("Enemies").transform;
             var boar = (GameObject)PrefabUtility.InstantiatePrefab(boarPrefab, scene);
@@ -711,7 +772,7 @@ namespace Arlen.Editor
             Set(spawner, "enemy", boar.GetComponent<EnemyController>());
         }
 
-        static void BakeNavMesh(Transform environment)
+        internal static void BakeNavMesh(Transform environment, string dataPath)
         {
             var surface = environment.gameObject.AddComponent<NavMeshSurface>();
             surface.collectObjects = CollectObjects.Children; // static level geometry only, not the player
@@ -724,8 +785,8 @@ namespace Arlen.Editor
             }
             else
             {
-                if (AssetExists(NavMeshDataPath)) AssetDatabase.DeleteAsset(NavMeshDataPath);
-                AssetDatabase.CreateAsset(surface.navMeshData, NavMeshDataPath);
+                if (AssetExists(dataPath)) AssetDatabase.DeleteAsset(dataPath);
+                AssetDatabase.CreateAsset(surface.navMeshData, dataPath);
             }
             // Safety net: rebuilds at runtime if the baked data is ever missing.
             environment.gameObject.AddComponent<NavMeshBootstrap>();
@@ -733,7 +794,7 @@ namespace Arlen.Editor
 
         // ───────────────────────────── Feedback ─────────────────────────────
 
-        static void BuildFeedback(GameObject player, Camera cam)
+        internal static void BuildFeedback(GameObject player, Camera cam)
         {
             var shake = cam.gameObject.AddComponent<CameraShake>();
             var systems = GameObject.Find("GameSystems") ?? new GameObject("GameSystems");
@@ -760,7 +821,7 @@ namespace Arlen.Editor
 
         // ───────────────────────────── UI ─────────────────────────────
 
-        static void BuildUI(GameObject player)
+        internal static HudRefs BuildUI(GameObject player)
         {
             var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
 
@@ -779,7 +840,7 @@ namespace Arlen.Editor
                 new Color(0.55f, 0.85f, 0.35f), new Color(0.9f, 0.95f, 0.6f, 0.6f));
 
             var hint = MakeText(canvasGo.transform, "ControlsHint", font, 20, TextAnchor.LowerLeft,
-                "WASD move · Mouse look · Shift sprint · Ctrl walk · Space jump · Alt dodge · LMB attack (3-hit combo) · RMB parry · Esc pause");
+                "WASD move · Mouse look · Shift sprint · Ctrl walk · Space jump · Alt dodge · LMB attack · RMB parry · E interact · Esc pause");
             Anchor(hint.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 30f), new Vector2(1400f, 30f));
             hint.color = new Color(1f, 1f, 1f, 0.8f);
 
@@ -818,9 +879,111 @@ namespace Arlen.Editor
             var es = new GameObject("EventSystem");
             es.AddComponent<EventSystem>();
             es.AddComponent<InputSystemUIInputModule>();
+
+            var refs = new HudRefs();
+            BuildExplorationUI(canvasGo.transform, font, player, systems, refs);
+            pauseRoot.transform.SetAsLastSibling(); // pause menu draws above everything
+            return refs;
         }
 
-        static ResourceBar BuildBar(Transform parent, string name, Vector2 pos, Vector2 size, Color fillColor, Color trailColor)
+        /// <summary>Milestone 3 UI: interaction prompt, dialogue box, area banner and screen fader.</summary>
+        static void BuildExplorationUI(Transform canvas, Font font, GameObject player, GameObject systems, HudRefs refs)
+        {
+            var input = player.GetComponent<PlayerInputReader>();
+            var interactor = player.GetComponent<PlayerInteractor>();
+
+            // Interaction prompt (lower centre)
+            var promptRoot = new GameObject("InteractionPrompt", typeof(RectTransform), typeof(Image));
+            promptRoot.transform.SetParent(canvas, false);
+            Anchor((RectTransform)promptRoot.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 250f), new Vector2(360f, 56f));
+            promptRoot.GetComponent<Image>().color = new Color(0.05f, 0.05f, 0.08f, 0.6f);
+            var promptText = MakeText(promptRoot.transform, "Label", font, 28, TextAnchor.MiddleCenter, "[E] Interact");
+            promptText.supportRichText = true;
+            Stretch(promptText.rectTransform);
+            var prompt = canvas.gameObject.AddComponent<InteractionPromptUI>();
+            Set(prompt, "interactor", interactor);
+            Set(prompt, "root", promptRoot);
+            Set(prompt, "label", promptText);
+
+            // Dialogue box (bottom)
+            var panel = new GameObject("DialoguePanel", typeof(RectTransform), typeof(Image));
+            panel.transform.SetParent(canvas, false);
+            var prt = (RectTransform)panel.transform;
+            prt.anchorMin = new Vector2(0.18f, 0f);
+            prt.anchorMax = new Vector2(0.82f, 0f);
+            prt.pivot = new Vector2(0.5f, 0f);
+            prt.anchoredPosition = new Vector2(0f, 40f);
+            prt.sizeDelta = new Vector2(0f, 190f);
+            panel.GetComponent<Image>().color = new Color(0.08f, 0.07f, 0.1f, 0.88f);
+
+            var plate = new GameObject("NamePlate", typeof(RectTransform), typeof(Image));
+            plate.transform.SetParent(panel.transform, false);
+            Anchor((RectTransform)plate.transform, new Vector2(0f, 1f), new Vector2(0f, 0f), new Vector2(24f, -8f), new Vector2(280f, 48f));
+            plate.GetComponent<Image>().color = new Color(0.16f, 0.42f, 0.4f, 1f);
+            var nameText = MakeText(plate.transform, "Name", font, 28, TextAnchor.MiddleLeft, "Name");
+            Stretch(nameText.rectTransform, 14f);
+
+            var body = MakeText(panel.transform, "Body", font, 30, TextAnchor.UpperLeft, "");
+            body.horizontalOverflow = HorizontalWrapMode.Wrap;
+            body.verticalOverflow = VerticalWrapMode.Truncate;
+            body.lineSpacing = 1.1f;
+            Stretch(body.rectTransform, 30f);
+            body.rectTransform.offsetMax = new Vector2(-30f, -40f);
+
+            var marker = MakeText(panel.transform, "Continue", font, 26, TextAnchor.LowerRight, "▼");
+            Anchor(marker.rectTransform, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-24f, 14f), new Vector2(60f, 40f));
+            marker.color = new Color(0.6f, 0.95f, 0.9f);
+
+            var view = canvas.gameObject.AddComponent<DialogueView>();
+            Set(view, "root", panel);
+            Set(view, "namePlate", plate);
+            Set(view, "nameText", nameText);
+            Set(view, "bodyText", body);
+            Set(view, "continueMarker", marker.gameObject);
+            panel.SetActive(false);
+
+            var runner = systems.AddComponent<DialogueRunner>();
+            Set(runner, "input", input);
+            Set(runner, "view", view);
+
+            // Area banner (upper centre)
+            var bannerGo = new GameObject("AreaBanner", typeof(RectTransform), typeof(CanvasGroup));
+            bannerGo.transform.SetParent(canvas, false);
+            Anchor((RectTransform)bannerGo.transform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -120f), new Vector2(1000f, 140f));
+            var bannerTitle = MakeText(bannerGo.transform, "Title", font, 60, TextAnchor.MiddleCenter, "");
+            Anchor(bannerTitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(1000f, 80f));
+            var bannerSub = MakeText(bannerGo.transform, "Subtitle", font, 26, TextAnchor.MiddleCenter, "");
+            Anchor(bannerSub.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -80f), new Vector2(1000f, 40f));
+            bannerSub.fontStyle = FontStyle.Italic;
+            var banner = bannerGo.AddComponent<AreaBanner>();
+            Set(banner, "group", bannerGo.GetComponent<CanvasGroup>());
+            Set(banner, "title", bannerTitle);
+            Set(banner, "subtitle", bannerSub);
+            bannerGo.GetComponent<CanvasGroup>().alpha = 0f;
+
+            // Screen fader (on top of the HUD, below the pause menu)
+            var fadeGo = new GameObject("ScreenFader", typeof(RectTransform), typeof(Image));
+            fadeGo.transform.SetParent(canvas, false);
+            Stretch((RectTransform)fadeGo.transform);
+            var fadeImage = fadeGo.GetComponent<Image>();
+            fadeImage.color = new Color(0f, 0f, 0f, 0f);
+            fadeImage.raycastTarget = false;
+            fadeImage.enabled = false;
+            var fader = fadeGo.AddComponent<ScreenFader>();
+            Set(fader, "overlay", fadeImage);
+
+            if (interactor != null)
+            {
+                Set(interactor, "dialogue", runner);
+                Set(interactor, "screenFader", fader);
+            }
+
+            refs.Banner = banner;
+            refs.Dialogue = runner;
+            refs.Fader = fader;
+        }
+
+        internal static ResourceBar BuildBar(Transform parent, string name, Vector2 pos, Vector2 size, Color fillColor, Color trailColor)
         {
             var root = new GameObject(name, typeof(RectTransform), typeof(Image));
             root.transform.SetParent(parent, false);
@@ -845,7 +1008,7 @@ namespace Arlen.Editor
             return bar;
         }
 
-        static Text MakeText(Transform parent, string name, Font font, int size, TextAnchor align, string content)
+        internal static Text MakeText(Transform parent, string name, Font font, int size, TextAnchor align, string content)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Text));
             go.transform.SetParent(parent, false);
@@ -861,7 +1024,7 @@ namespace Arlen.Editor
             return t;
         }
 
-        static Button MakeButton(Transform parent, string name, Font font, string label, Vector2 pos)
+        internal static Button MakeButton(Transform parent, string name, Font font, string label, Vector2 pos)
         {
             var go = new GameObject(name, typeof(RectTransform), typeof(Image), typeof(Button));
             go.transform.SetParent(parent, false);
@@ -878,7 +1041,7 @@ namespace Arlen.Editor
             return button;
         }
 
-        static void Anchor(RectTransform rt, Vector2 anchor, Vector2 pivot, Vector2 pos, Vector2 size)
+        internal static void Anchor(RectTransform rt, Vector2 anchor, Vector2 pivot, Vector2 pos, Vector2 size)
         {
             rt.anchorMin = rt.anchorMax = anchor;
             rt.pivot = pivot;
@@ -886,7 +1049,7 @@ namespace Arlen.Editor
             rt.sizeDelta = size;
         }
 
-        static void Stretch(RectTransform rt, float padding = 0f)
+        internal static void Stretch(RectTransform rt, float padding = 0f)
         {
             rt.anchorMin = Vector2.zero;
             rt.anchorMax = Vector2.one;
@@ -896,7 +1059,7 @@ namespace Arlen.Editor
 
         // ───────────────────────────── Helpers ─────────────────────────────
 
-        static GameObject Prim(PrimitiveType type, string name, Transform parent, Vector3 localPos, Vector3 localScale,
+        internal static GameObject Prim(PrimitiveType type, string name, Transform parent, Vector3 localPos, Vector3 localScale,
             Material mat, bool collider, Vector3 euler = default)
         {
             var go = GameObject.CreatePrimitive(type);
@@ -920,7 +1083,7 @@ namespace Arlen.Editor
         }
 
         /// <summary>Loads or creates a URP Lit material asset. Existing materials are reused (never recoloured).</summary>
-        static Material Mat(string name, Color color, Color? emission = null)
+        internal static Material Mat(string name, Color color, Color? emission = null)
         {
             if (MaterialCache.TryGetValue(name, out var cached) && cached != null) return cached;
 
@@ -953,7 +1116,7 @@ namespace Arlen.Editor
             return mat;
         }
 
-        static void Set(Object target, string property, Object value)
+        internal static void Set(Object target, string property, Object value)
         {
             var so = new SerializedObject(target);
             var prop = so.FindProperty(property);
@@ -962,7 +1125,7 @@ namespace Arlen.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        static void SetArray(Object target, string property, Object[] values)
+        internal static void SetArray(Object target, string property, Object[] values)
         {
             var so = new SerializedObject(target);
             var prop = so.FindProperty(property);
@@ -972,7 +1135,7 @@ namespace Arlen.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        static void SetValue(Object target, string property, object value)
+        internal static void SetValue(Object target, string property, object value)
         {
             var so = new SerializedObject(target);
             var prop = so.FindProperty(property);
@@ -990,9 +1153,9 @@ namespace Arlen.Editor
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        static bool AssetExists(string path) => !string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(path, AssetPathToGUIDOptions.OnlyExistingAssets));
+        internal static bool AssetExists(string path) => !string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(path, AssetPathToGUIDOptions.OnlyExistingAssets));
 
-        static void EnsureFolder(string path)
+        internal static void EnsureFolder(string path)
         {
             if (AssetDatabase.IsValidFolder(path)) return;
             string parent = System.IO.Path.GetDirectoryName(path)?.Replace('\\', '/');
@@ -1000,7 +1163,7 @@ namespace Arlen.Editor
             AssetDatabase.CreateFolder(parent, System.IO.Path.GetFileName(path));
         }
 
-        static void AddSceneToBuildSettings(string path)
+        internal static void AddSceneToBuildSettings(string path)
         {
             var scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
             if (scenes.Exists(s => s.path == path)) return;
