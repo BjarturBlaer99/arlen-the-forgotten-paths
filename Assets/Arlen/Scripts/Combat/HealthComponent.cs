@@ -15,6 +15,7 @@ namespace Arlen.Combat
 
         HealthPool pool;
         int invulnerabilityCount;
+        readonly System.Collections.Generic.List<IDamageInterceptor> interceptors = new System.Collections.Generic.List<IDamageInterceptor>(2);
 
         public float Max => Pool.Max;
         public float Current => Pool.Current;
@@ -28,6 +29,8 @@ namespace Arlen.Combat
         public event Action<DamageInfo> Damaged;
         /// <summary>Raised when an incoming hit was ignored because of invulnerability (e.g. dodge i-frames).</summary>
         public event Action<DamageInfo> DamageAvoided;
+        /// <summary>Raised when an interceptor (parry) deflected the hit.</summary>
+        public event Action<DamageInfo> DamageParried;
         public event Action<float> Healed;
         public event Action Died;
         public event Action Revived;
@@ -55,20 +58,36 @@ namespace Arlen.Combat
             pool.Revived += () => Revived?.Invoke();
         }
 
-        public bool ApplyDamage(in DamageInfo info)
+        public DamageResult ApplyDamage(in DamageInfo info)
         {
-            if (!IsAlive || info.Amount <= 0f) return false;
+            if (!IsAlive || info.Amount <= 0f) return DamageResult.Ignored;
             if (IsInvulnerable)
             {
                 DamageAvoided?.Invoke(info);
-                return false;
+                return DamageResult.Ignored;
+            }
+
+            for (int i = 0; i < interceptors.Count; i++)
+            {
+                DamageResult intercepted = interceptors[i].Intercept(info);
+                if (intercepted == DamageResult.Applied) continue;
+                if (intercepted == DamageResult.Parried) DamageParried?.Invoke(info);
+                return intercepted;
             }
 
             // Damaged fires before Changed/Died so listeners can react to the hit itself first.
             Damaged?.Invoke(info);
             Pool.TakeDamage(info.Amount);
-            return true;
+            return DamageResult.Applied;
         }
+
+        /// <summary>Registers a component (e.g. parry) that may deflect hits before they reduce health.</summary>
+        public void AddInterceptor(IDamageInterceptor interceptor)
+        {
+            if (interceptor != null && !interceptors.Contains(interceptor)) interceptors.Add(interceptor);
+        }
+
+        public void RemoveInterceptor(IDamageInterceptor interceptor) => interceptors.Remove(interceptor);
 
         public float Heal(float amount) => Pool.Heal(amount);
 

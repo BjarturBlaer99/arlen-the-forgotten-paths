@@ -12,7 +12,7 @@ namespace Arlen.Player
     ///   float  SpeedNormalized  0 idle, 0.5 run, 1 sprint
     ///   bool   Grounded
     ///   float  VerticalSpeed
-    ///   trigger Jump, Land, Dodge, Attack, Hit, Die
+    ///   trigger Jump, Land, Dodge, Attack, Parry, ParrySuccess, Hit, Die
     ///   int    AttackIndex  combo step (0-based)
     ///   bool   Dead
     ///
@@ -25,6 +25,7 @@ namespace Arlen.Player
         [SerializeField] PlayerDodge dodge;
         [SerializeField] PlayerMeleeCombat combat;
         [SerializeField] HealthComponent health;
+        [SerializeField] PlayerParry parry;
 
         static readonly int SpeedId = Animator.StringToHash("Speed");
         static readonly int SpeedNormalizedId = Animator.StringToHash("SpeedNormalized");
@@ -38,6 +39,8 @@ namespace Arlen.Player
         static readonly int HitId = Animator.StringToHash("Hit");
         static readonly int DieId = Animator.StringToHash("Die");
         static readonly int DeadId = Animator.StringToHash("Dead");
+        static readonly int ParryId = Animator.StringToHash("Parry");
+        static readonly int ParrySuccessId = Animator.StringToHash("ParrySuccess");
 
         RuntimeAnimatorController cachedController;
         readonly System.Collections.Generic.HashSet<int> parameters = new System.Collections.Generic.HashSet<int>();
@@ -49,6 +52,7 @@ namespace Arlen.Player
             if (dodge == null) dodge = GetComponent<PlayerDodge>();
             if (combat == null) combat = GetComponent<PlayerMeleeCombat>();
             if (health == null) health = GetComponent<HealthComponent>();
+            if (parry == null) parry = GetComponent<PlayerParry>();
         }
 
         void OnEnable()
@@ -57,6 +61,7 @@ namespace Arlen.Player
             if (dodge != null) dodge.Started += OnDodge;
             if (combat != null) combat.AttackStarted += OnAttack;
             if (health != null) { health.Damaged += OnHit; health.Died += OnDied; health.Revived += OnRevived; }
+            if (parry != null) { parry.Started += OnParry; parry.Parried += OnParrySuccess; }
         }
 
         void OnDisable()
@@ -65,6 +70,7 @@ namespace Arlen.Player
             if (dodge != null) dodge.Started -= OnDodge;
             if (combat != null) combat.AttackStarted -= OnAttack;
             if (health != null) { health.Damaged -= OnHit; health.Died -= OnDied; health.Revived -= OnRevived; }
+            if (parry != null) { parry.Started -= OnParry; parry.Parried -= OnParrySuccess; }
         }
 
         bool Ready()
@@ -95,6 +101,8 @@ namespace Arlen.Player
         void OnJumped() => Trigger(JumpId);
         void OnLanded(float _) => Trigger(LandId);
         void OnDodge() => Trigger(DodgeId);
+        void OnParry() => Trigger(ParryId);
+        void OnParrySuccess(DamageInfo _) => Trigger(ParrySuccessId);
         void OnHit(DamageInfo _) => Trigger(HitId);
         void OnDied() { Trigger(DieId); SetBool(DeadId, true); }
         void OnRevived() => SetBool(DeadId, false);

@@ -1,13 +1,17 @@
 using System.Collections.Generic;
+using Arlen.AI;
 using Arlen.CameraSystem;
 using Arlen.Combat;
 using Arlen.Core;
+using Arlen.Feedback;
 using Arlen.Player;
 using Arlen.UI;
 using UnityEditor;
 using UnityEditor.Events;
 using UnityEditor.SceneManagement;
+using Unity.AI.Navigation;
 using UnityEngine;
+using UnityEngine.AI;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
@@ -28,6 +32,9 @@ namespace Arlen.Editor
         public const string ScenePath = Root + "/Scenes/Prototype_TrainingGround.unity";
         public const string PlayerPrefabPath = Root + "/Prefabs/Characters/Player_PlaceholderCat.prefab";
         public const string InputActionsPath = Root + "/Input/ArlenControls.inputactions";
+        public const string BoarPrefabPath = Root + "/Prefabs/Enemies/Enemy_BoarRuffian.prefab";
+        public const string BoarStatsPath = Root + "/Data/Enemies/BoarRuffian_Stats.asset";
+        const string NavMeshDataPath = Root + "/Scenes/Prototype_TrainingGround_NavMesh.asset";
         const string MaterialsFolder = Root + "/Art/Materials";
 
         static readonly Dictionary<string, Material> MaterialCache = new Dictionary<string, Material>();
@@ -56,6 +63,16 @@ namespace Arlen.Editor
                 return;
             BuildPlayerPrefab();
             Debug.Log($"[Arlen] Rebuilt {PlayerPrefabPath}");
+        }
+
+        [MenuItem("Tools/Arlen/Rebuild Boar Ruffian Prefab", priority = 1)]
+        public static void RebuildBoarPrefabMenu()
+        {
+            if (AssetExists(BoarPrefabPath) && !EditorUtility.DisplayDialog("Arlen",
+                    $"Regenerate '{BoarPrefabPath}'? Manual edits to the prefab will be lost. Stats asset is kept.", "Rebuild", "Cancel"))
+                return;
+            BuildBoarPrefab();
+            Debug.Log($"[Arlen] Rebuilt {BoarPrefabPath}");
         }
 
         [MenuItem("Tools/Arlen/Open Prototype Scene", priority = 2)]
@@ -92,9 +109,17 @@ namespace Arlen.Editor
             MaterialCache.Clear();
             EnsureFolder(Root + "/Scenes");
 
-            GameObject playerPrefab = AssetExists(PlayerPrefabPath)
-                ? AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath)
-                : BuildPlayerPrefab();
+            GameObject playerPrefab;
+            if (AssetExists(PlayerPrefabPath))
+            {
+                UpgradePlayerPrefab(); // add components introduced by later milestones, keep user edits
+                playerPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PlayerPrefabPath);
+            }
+            else playerPrefab = BuildPlayerPrefab();
+
+            GameObject boarPrefab = AssetExists(BoarPrefabPath)
+                ? AssetDatabase.LoadAssetAtPath<GameObject>(BoarPrefabPath)
+                : BuildBoarPrefab();
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
@@ -114,7 +139,11 @@ namespace Arlen.Editor
             var cam = BuildCamera(player);
             Set(player.GetComponent<ArlenPlayerController>(), "cameraTransform", cam.transform);
 
+            BakeNavMesh(environment);
+            BuildEnemies(scene, boarPrefab);
+
             BuildUI(player);
+            BuildFeedback(player, cam);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -363,6 +392,7 @@ namespace Arlen.Editor
                 var respawn = root.AddComponent<PlayerRespawn>();
                 SetArray(respawn, "disableWhileDead", new Object[] { dodge, combat });
                 root.AddComponent<PlayerAnimatorBridge>();
+                AddMilestone2PlayerComponents(root);
 
                 var visual = BuildCatVisual(root.transform, out var body, out var tail, out var sword);
                 var anim = visual.gameObject.AddComponent<PlaceholderCatAnimator>();
@@ -468,6 +498,266 @@ namespace Arlen.Editor
             return visual;
         }
 
+        /// <summary>Adds parry, hit reaction and targeting. Idempotent; used for new and existing prefabs.</summary>
+        static bool AddMilestone2PlayerComponents(GameObject root)
+        {
+            bool changed = false;
+            var parry = root.GetComponent<PlayerParry>();
+            if (parry == null) { parry = root.AddComponent<PlayerParry>(); changed = true; }
+            if (root.GetComponent<PlayerHitReaction>() == null) { root.AddComponent<PlayerHitReaction>(); changed = true; }
+            if (root.GetComponent<Targetable>() == null)
+            {
+                var t = root.AddComponent<Targetable>();
+                SetValue(t, "team", (int)Team.Player);
+                changed = true;
+            }
+
+            var respawn = root.GetComponent<PlayerRespawn>();
+            if (respawn != null)
+            {
+                var so = new SerializedObject(respawn);
+                var list = so.FindProperty("disableWhileDead");
+                bool present = false;
+                for (int i = 0; i < list.arraySize; i++)
+                    if (list.GetArrayElementAtIndex(i).objectReferenceValue == parry) present = true;
+                if (!present)
+                {
+                    list.arraySize++;
+                    list.GetArrayElementAtIndex(list.arraySize - 1).objectReferenceValue = parry;
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                    changed = true;
+                }
+            }
+            return changed;
+        }
+
+        static void UpgradePlayerPrefab()
+        {
+            var root = PrefabUtility.LoadPrefabContents(PlayerPrefabPath);
+            try
+            {
+                if (AddMilestone2PlayerComponents(root))
+                {
+                    PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
+                    Debug.Log($"[Arlen] Upgraded {PlayerPrefabPath} with parry, hit reaction and targeting.");
+                }
+            }
+            finally
+            {
+                PrefabUtility.UnloadPrefabContents(root);
+            }
+        }
+
+        // ───────────────────────────── Enemies ─────────────────────────────
+
+        static EnemyStats LoadOrCreateBoarStats()
+        {
+            var stats = AssetDatabase.LoadAssetAtPath<EnemyStats>(BoarStatsPath);
+            if (stats != null) return stats;
+            EnsureFolder(Root + "/Data/Enemies");
+            stats = ScriptableObject.CreateInstance<EnemyStats>();
+            stats.displayName = "Boar Ruffian";
+            // Defaults in EnemyStats are tuned for the Boar Ruffian; adjust the asset in the Inspector.
+            AssetDatabase.CreateAsset(stats, BoarStatsPath);
+            AssetDatabase.SaveAssets();
+            return stats;
+        }
+
+        static GameObject BuildBoarPrefab()
+        {
+            EnsureFolder(Root + "/Prefabs/Enemies");
+            var stats = LoadOrCreateBoarStats();
+
+            var root = new GameObject("Enemy_BoarRuffian");
+            try
+            {
+                var agent = root.AddComponent<NavMeshAgent>();
+                agent.radius = 0.55f;
+                agent.height = 1.9f;
+                agent.baseOffset = 0f;
+                agent.obstacleAvoidanceType = ObstacleAvoidanceType.MedQualityObstacleAvoidance;
+
+                var capsule = root.AddComponent<CapsuleCollider>();
+                capsule.center = new Vector3(0f, 0.95f, 0f);
+                capsule.height = 1.9f;
+                capsule.radius = 0.55f;
+
+                var health = root.AddComponent<HealthComponent>();
+                var targetable = root.AddComponent<Targetable>();
+                SetValue(targetable, "team", (int)Team.Enemy);
+                root.AddComponent<EnemySensor>();
+                root.AddComponent<EnemyMotor>();
+                root.AddComponent<EnemyMeleeAttack>();
+                var brain = root.AddComponent<EnemyController>();
+                Set(brain, "stats", stats);
+                SetArray(brain, "disableOnDeath", new Object[] { capsule });
+
+                var visual = BuildBoarVisual(root.transform, out var body, out var club, out var eyes, out var alert);
+                var presenter = visual.gameObject.AddComponent<BoarRuffianVisual>();
+                Set(presenter, "body", body);
+                Set(presenter, "clubPivot", club);
+                SetArray(presenter, "eyes", eyes);
+                Set(presenter, "alertMarker", alert);
+
+                var flash = visual.gameObject.AddComponent<DamageFlash>();
+                Set(flash, "health", health);
+                var flashRenderers = new List<Renderer>(visual.GetComponentsInChildren<Renderer>(true));
+                flashRenderers.RemoveAll(r => System.Array.IndexOf(eyes, r) >= 0 || r.transform.IsChildOf(alert.transform));
+                SetArray(flash, "renderers", flashRenderers.ToArray());
+
+                BuildWorldHealthBar(root.transform, health);
+                return PrefabUtility.SaveAsPrefabAsset(root, BoarPrefabPath);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        /// <summary>Primitive stand-in for the Boar Ruffian: stocky, tusked, leather vest, wooden club.</summary>
+        static Transform BuildBoarVisual(Transform parent, out Transform body, out Transform clubPivot, out Renderer[] eyes, out GameObject alert)
+        {
+            var hide = Mat("Boar_Hide", new Color(0.46f, 0.32f, 0.24f));
+            var dark = Mat("Boar_Bristle", new Color(0.22f, 0.15f, 0.11f));
+            var snout = Mat("Boar_Snout", new Color(0.72f, 0.52f, 0.45f));
+            var belly = Mat("Boar_Belly", new Color(0.66f, 0.54f, 0.40f));
+            var vest = Mat("Boar_Vest", new Color(0.50f, 0.18f, 0.14f));
+            var ivory = Mat("Boar_Tusk", new Color(0.95f, 0.92f, 0.82f));
+            var eyeMat = Mat("Boar_Eye", new Color(0.15f, 0.1f, 0.05f), emission: Color.black);
+            var wood = Mat("Club_Wood", new Color(0.40f, 0.27f, 0.15f));
+            var iron = Mat("Club_Iron", new Color(0.35f, 0.35f, 0.38f));
+            var alertMat = Mat("Alert_Marker", new Color(1f, 0.85f, 0.2f), emission: new Color(1f, 0.7f, 0.1f));
+
+            var visual = new GameObject("Visual").transform;
+            visual.SetParent(parent, false);
+            body = new GameObject("Body").transform;
+            body.SetParent(visual, false);
+            body.localPosition = new Vector3(0f, 0.9f, 0f);
+
+            Prim(PrimitiveType.Capsule, "Torso", body, new Vector3(0f, 0.12f, 0f), new Vector3(0.95f, 0.6f, 0.8f), hide, false);
+            Prim(PrimitiveType.Sphere, "Belly", body, new Vector3(0f, 0f, 0.22f), new Vector3(0.72f, 0.72f, 0.42f), belly, false);
+            Prim(PrimitiveType.Cylinder, "Vest", body, new Vector3(0f, 0.28f, 0f), new Vector3(0.98f, 0.24f, 0.84f), vest, false);
+            Prim(PrimitiveType.Cylinder, "Belt", body, new Vector3(0f, -0.12f, 0f), new Vector3(0.98f, 0.04f, 0.84f), dark, false);
+
+            var head = new GameObject("Head").transform;
+            head.SetParent(body, false);
+            head.localPosition = new Vector3(0f, 0.72f, 0.14f);
+            Prim(PrimitiveType.Sphere, "Skull", head, Vector3.zero, new Vector3(0.6f, 0.52f, 0.62f), hide, false);
+            Prim(PrimitiveType.Cylinder, "Snout", head, new Vector3(0f, -0.08f, 0.36f), new Vector3(0.28f, 0.12f, 0.22f), snout, false, new Vector3(90f, 0f, 0f));
+            var eyeList = new List<Renderer>();
+            for (int side = -1; side <= 1; side += 2)
+            {
+                string s = side < 0 ? "L" : "R";
+                Prim(PrimitiveType.Sphere, $"Nostril_{s}", head, new Vector3(0.06f * side, -0.08f, 0.48f), Vector3.one * 0.05f, dark, false);
+                Prim(PrimitiveType.Cube, $"Tusk_{s}", head, new Vector3(0.13f * side, -0.12f, 0.4f), new Vector3(0.04f, 0.16f, 0.04f), ivory, false, new Vector3(-15f, 0f, -12f * side));
+                eyeList.Add(Prim(PrimitiveType.Sphere, $"Eye_{s}", head, new Vector3(0.15f * side, 0.07f, 0.26f), Vector3.one * 0.08f, eyeMat, false).GetComponent<Renderer>());
+                Prim(PrimitiveType.Cube, $"Ear_{s}", head, new Vector3(0.22f * side, 0.24f, -0.02f), new Vector3(0.16f, 0.2f, 0.06f), hide, false, new Vector3(0f, 0f, -35f * side));
+                Prim(PrimitiveType.Capsule, $"Arm_{s}", body, new Vector3(0.55f * side, 0.08f, 0.05f), new Vector3(0.24f, 0.34f, 0.24f), hide, false, new Vector3(0f, 0f, 10f * side));
+                Prim(PrimitiveType.Capsule, $"Leg_{s}", body, new Vector3(0.25f * side, -0.58f, 0f), new Vector3(0.26f, 0.28f, 0.26f), hide, false);
+                Prim(PrimitiveType.Cube, $"Hoof_{s}", body, new Vector3(0.25f * side, -0.84f, 0.05f), new Vector3(0.22f, 0.12f, 0.28f), dark, false);
+            }
+            eyes = eyeList.ToArray();
+            for (int i = 0; i < 4; i++)
+                Prim(PrimitiveType.Cube, $"Bristle_{i}", head, new Vector3(0f, 0.25f - i * 0.03f, 0.08f - i * 0.14f), new Vector3(0.05f, 0.14f, 0.1f), dark, false);
+
+            clubPivot = new GameObject("ClubPivot").transform;
+            clubPivot.SetParent(body, false);
+            clubPivot.localPosition = new Vector3(0.58f, -0.15f, 0.2f);
+            clubPivot.localRotation = Quaternion.Euler(70f, 0f, 0f);
+            Prim(PrimitiveType.Cylinder, "Handle", clubPivot, new Vector3(0f, 0f, 0.3f), new Vector3(0.08f, 0.32f, 0.08f), wood, false, new Vector3(90f, 0f, 0f));
+            Prim(PrimitiveType.Cylinder, "ClubHead", clubPivot, new Vector3(0f, 0f, 0.78f), new Vector3(0.22f, 0.22f, 0.22f), wood, false, new Vector3(90f, 0f, 0f));
+            Prim(PrimitiveType.Cube, "Band", clubPivot, new Vector3(0f, 0f, 0.64f), new Vector3(0.25f, 0.25f, 0.05f), iron, false);
+
+            alert = new GameObject("AlertMarker");
+            alert.transform.SetParent(visual, false);
+            alert.transform.localPosition = new Vector3(0f, 2.55f, 0f);
+            Prim(PrimitiveType.Cube, "Bar", alert.transform, new Vector3(0f, 0.15f, 0f), new Vector3(0.12f, 0.4f, 0.12f), alertMat, false);
+            Prim(PrimitiveType.Sphere, "Dot", alert.transform, new Vector3(0f, -0.18f, 0f), Vector3.one * 0.14f, alertMat, false);
+            alert.SetActive(false);
+
+            return visual;
+        }
+
+        static void BuildWorldHealthBar(Transform parent, HealthComponent health)
+        {
+            var barRoot = new GameObject("HealthBar").transform;
+            barRoot.SetParent(parent, false);
+            barRoot.localPosition = new Vector3(0f, 2.25f, 0f);
+            var visual = new GameObject("Bar").transform;
+            visual.SetParent(barRoot, false);
+            var bg = Prim(PrimitiveType.Cube, "Background", visual, Vector3.zero, new Vector3(1.0f, 0.11f, 0.02f), Mat("UI_BarBack", new Color(0.08f, 0.06f, 0.06f)), false);
+            var fill = Prim(PrimitiveType.Cube, "Fill", visual, new Vector3(0f, 0f, -0.015f), new Vector3(0.96f, 0.075f, 0.02f), Mat("UI_BarEnemy", new Color(0.85f, 0.2f, 0.2f), emission: new Color(0.3f, 0.05f, 0.05f)), false);
+            foreach (var r in new[] { bg.GetComponent<Renderer>(), fill.GetComponent<Renderer>() })
+            {
+                r.shadowCastingMode = ShadowCastingMode.Off;
+                r.receiveShadows = false;
+            }
+            var bar = barRoot.gameObject.AddComponent<WorldHealthBar>();
+            Set(bar, "health", health);
+            Set(bar, "fill", fill.transform);
+            Set(bar, "visualRoot", visual.gameObject);
+        }
+
+        static void BuildEnemies(Scene scene, GameObject boarPrefab)
+        {
+            var group = new GameObject("Enemies").transform;
+            var boar = (GameObject)PrefabUtility.InstantiatePrefab(boarPrefab, scene);
+            boar.transform.SetParent(group);
+            // North-west clearing: out of sight from spawn, found by walking toward the dummies.
+            boar.transform.SetPositionAndRotation(new Vector3(-8f, 0f, 17f), Quaternion.Euler(0f, 160f, 0f));
+
+            var spawner = new GameObject("BoarRuffian_Respawner").AddComponent<PrototypeEnemySpawner>();
+            spawner.transform.SetParent(group);
+            Set(spawner, "enemy", boar.GetComponent<EnemyController>());
+        }
+
+        static void BakeNavMesh(Transform environment)
+        {
+            var surface = environment.gameObject.AddComponent<NavMeshSurface>();
+            surface.collectObjects = CollectObjects.Children; // static level geometry only, not the player
+            surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
+            surface.BuildNavMesh();
+
+            if (surface.navMeshData == null)
+            {
+                Debug.LogWarning("[Arlen] NavMesh bake produced no data; enemies will bake at runtime.");
+            }
+            else
+            {
+                if (AssetExists(NavMeshDataPath)) AssetDatabase.DeleteAsset(NavMeshDataPath);
+                AssetDatabase.CreateAsset(surface.navMeshData, NavMeshDataPath);
+            }
+            // Safety net: rebuilds at runtime if the baked data is ever missing.
+            environment.gameObject.AddComponent<NavMeshBootstrap>();
+        }
+
+        // ───────────────────────────── Feedback ─────────────────────────────
+
+        static void BuildFeedback(GameObject player, Camera cam)
+        {
+            var shake = cam.gameObject.AddComponent<CameraShake>();
+            var systems = GameObject.Find("GameSystems") ?? new GameObject("GameSystems");
+            var hitStop = systems.AddComponent<HitStop>();
+
+            var poolGo = new GameObject("ImpactFxPool");
+            var template = Prim(PrimitiveType.Sphere, "ImpactFlash", poolGo.transform, Vector3.zero, Vector3.one * 0.5f,
+                Mat("FX_Impact", Color.white, emission: Color.white), false);
+            var tr = template.GetComponent<Renderer>();
+            tr.shadowCastingMode = ShadowCastingMode.Off;
+            tr.receiveShadows = false;
+            template.SetActive(false);
+            var pool = poolGo.AddComponent<ImpactFxPool>();
+            Set(pool, "template", template);
+
+            var feedback = systems.AddComponent<PlayerCombatFeedback>();
+            Set(feedback, "playerHealth", player.GetComponent<HealthComponent>());
+            Set(feedback, "combat", player.GetComponent<PlayerMeleeCombat>());
+            Set(feedback, "parry", player.GetComponent<PlayerParry>());
+            Set(feedback, "hitStop", hitStop);
+            Set(feedback, "cameraShake", shake);
+            Set(feedback, "impacts", pool);
+        }
+
         // ───────────────────────────── UI ─────────────────────────────
 
         static void BuildUI(GameObject player)
@@ -489,7 +779,7 @@ namespace Arlen.Editor
                 new Color(0.55f, 0.85f, 0.35f), new Color(0.9f, 0.95f, 0.6f, 0.6f));
 
             var hint = MakeText(canvasGo.transform, "ControlsHint", font, 20, TextAnchor.LowerLeft,
-                "WASD move · Mouse look · Shift sprint · Ctrl walk · Space jump · Alt dodge · LMB attack (3-hit combo) · Esc pause");
+                "WASD move · Mouse look · Shift sprint · Ctrl walk · Space jump · Alt dodge · LMB attack (3-hit combo) · RMB parry · Esc pause");
             Anchor(hint.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 30f), new Vector2(1400f, 30f));
             hint.color = new Color(1f, 1f, 1f, 0.8f);
 

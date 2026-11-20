@@ -24,6 +24,7 @@ namespace Arlen.Player
         float jumpPressedAt = float.NegativeInfinity;
         float dodgePressedAt = float.NegativeInfinity;
         float attackPressedAt = float.NegativeInfinity;
+        float parryPressedAt = float.NegativeInfinity;
 
         /// <summary>Camera-independent move input, magnitude clamped to 1.</summary>
         public Vector2 Move { get; private set; }
@@ -38,8 +39,7 @@ namespace Arlen.Player
         public bool GameplayBlocked { get; set; }
 
         public event Action PausePressed;
-        /// <summary>Reserved for Milestone 2 (parry) and 3 (interaction).</summary>
-        public event Action ParryPressed;
+        /// <summary>Reserved for Milestone 3 (interaction).</summary>
         public event Action InteractPressed;
 
         public InputActionAsset Actions => actions;
@@ -143,7 +143,7 @@ namespace Arlen.Player
         void OnDodge(InputAction.CallbackContext _) { if (!GameplayBlocked) dodgePressedAt = Time.time; }
         void OnAttack(InputAction.CallbackContext _) { if (!GameplayBlocked) attackPressedAt = Time.time; }
         void OnWalk(InputAction.CallbackContext _) { if (!GameplayBlocked) WalkToggled = !WalkToggled; }
-        void OnParry(InputAction.CallbackContext _) { if (!GameplayBlocked) ParryPressed?.Invoke(); }
+        void OnParry(InputAction.CallbackContext _) { if (!GameplayBlocked) parryPressedAt = Time.time; }
         void OnInteract(InputAction.CallbackContext _) { if (!GameplayBlocked) InteractPressed?.Invoke(); }
         void OnPause(InputAction.CallbackContext _) => PausePressed?.Invoke();
 
@@ -151,11 +151,12 @@ namespace Arlen.Player
         public bool ConsumeJump() => Consume(ref jumpPressedAt);
         public bool ConsumeDodge() => Consume(ref dodgePressedAt);
         public bool ConsumeAttack() => Consume(ref attackPressedAt);
+        public bool ConsumeParry() => Consume(ref parryPressedAt);
 
         /// <summary>Drops any buffered presses (e.g. after respawn or unpausing).</summary>
         public void ClearBufferedInput()
         {
-            jumpPressedAt = dodgePressedAt = attackPressedAt = float.NegativeInfinity;
+            jumpPressedAt = dodgePressedAt = attackPressedAt = parryPressedAt = float.NegativeInfinity;
         }
 
         bool Consume(ref float pressedAt)

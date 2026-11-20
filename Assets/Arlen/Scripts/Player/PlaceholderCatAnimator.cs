@@ -13,6 +13,8 @@ namespace Arlen.Player
         [SerializeField] ArlenPlayerController controller;
         [SerializeField] PlayerDodge dodge;
         [SerializeField] PlayerMeleeCombat combat;
+        [SerializeField] PlayerParry parry;
+        [SerializeField] PlayerHitReaction hitReaction;
         [Tooltip("Child that holds the body meshes; bobbed, leaned and rolled.")]
         [SerializeField] Transform body;
         [SerializeField] Transform tail;
@@ -44,6 +46,8 @@ namespace Arlen.Player
             if (controller == null) controller = GetComponentInParent<ArlenPlayerController>();
             if (dodge == null) dodge = GetComponentInParent<PlayerDodge>();
             if (combat == null) combat = GetComponentInParent<PlayerMeleeCombat>();
+            if (parry == null) parry = GetComponentInParent<PlayerParry>();
+            if (hitReaction == null) hitReaction = GetComponentInParent<PlayerHitReaction>();
             if (body != null) { bodyRestPos = body.localPosition; bodyRestRot = body.localRotation; }
             if (tail != null) tailRestRot = tail.localRotation;
             if (swordPivot != null) swordRestRot = swordPivot.localRotation;
@@ -70,6 +74,7 @@ namespace Arlen.Player
                     rot = bodyRestRot * Quaternion.Euler(angle, 0f, 0f);
                     bob = dodge.IsBackstep ? 0f : -0.35f * Mathf.Sin(dodge.NormalizedTime * Mathf.PI);
                 }
+                if (hitReaction != null && hitReaction.IsStunned) rot = bodyRestRot * Quaternion.Euler(-18f, 0f, 6f);
                 body.localPosition = bodyRestPos + Vector3.up * bob;
                 body.localRotation = rot;
             }
@@ -84,7 +89,13 @@ namespace Arlen.Player
             // Sword swing
             if (swordPivot != null)
             {
-                if (combat != null && combat.IsAttacking)
+                if (parry != null && parry.IsParrying)
+                {
+                    // Guard: blade held across the body. Snaps up fast so the window reads clearly.
+                    Quaternion guard = swordRestRot * Quaternion.Euler(-75f, -70f, 0f);
+                    swordPivot.localRotation = Quaternion.Slerp(swordPivot.localRotation, guard, 1f - Mathf.Exp(-40f * dt));
+                }
+                else if (combat != null && combat.IsAttacking)
                 {
                     int i = Mathf.Clamp(combat.StepIndex, 0, SwingFrom.Length - 1);
                     Quaternion from = swordRestRot * Quaternion.Euler(SwingFrom[i]);

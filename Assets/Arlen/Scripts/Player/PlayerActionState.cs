@@ -8,6 +8,9 @@ namespace Arlen.Player
         None,
         Dodge,
         Attack,
+        Parry,
+        /// <summary>Brief loss of control after taking a heavy hit.</summary>
+        HitStun,
     }
 
     /// <summary>
@@ -47,6 +50,15 @@ namespace Arlen.Player
             }
 
             return false;
+        }
+
+        /// <summary>Starts an action regardless of what is running (e.g. hit-stun), interrupting the current one.</summary>
+        public void ForceBegin(PlayerAction action)
+        {
+            if (action == PlayerAction.None) { ForceClear(); return; }
+            var interrupted = Current;
+            Set(action);
+            if (interrupted != PlayerAction.None && interrupted != action) Interrupted?.Invoke(interrupted);
         }
 
         public void SetCancelable(PlayerAction owner, bool cancelable)

@@ -1343,6 +1343,8 @@ MonoBehaviour:
   controller: {fileID: 0}
   dodge: {fileID: 0}
   combat: {fileID: 0}
+  parry: {fileID: 0}
+  hitReaction: {fileID: 0}
   body: {fileID: 4674426545543194075}
   tail: {fileID: 8757565663753150441}
   swordPivot: {fileID: 1773759904647124627}
@@ -1961,6 +1963,9 @@ GameObject:
   - component: {fileID: 8231140828999899522}
   - component: {fileID: 1997594762667967833}
   - component: {fileID: 9189957649808724848}
+  - component: {fileID: 8002060900621206581}
+  - component: {fileID: 4056120838141977290}
+  - component: {fileID: 8950597167056431980}
   m_Layer: 0
   m_Name: Player_PlaceholderCat
   m_TagString: Untagged
@@ -2227,6 +2232,7 @@ MonoBehaviour:
   disableWhileDead:
   - {fileID: 8176922996628588459}
   - {fileID: 8231140828999899522}
+  - {fileID: 8002060900621206581}
 --- !u!114 &9189957649808724848
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2243,6 +2249,63 @@ MonoBehaviour:
   controller: {fileID: 0}
   dodge: {fileID: 0}
   combat: {fileID: 0}
+  health: {fileID: 0}
+  parry: {fileID: 0}
+--- !u!114 &8002060900621206581
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3326043174834746180}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 323e75498a79f4174bb3b96e391a1541, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Arlen::Arlen.Combat.PlayerParry
+  input: {fileID: 0}
+  controller: {fileID: 0}
+  actionState: {fileID: 0}
+  stamina: {fileID: 0}
+  health: {fileID: 0}
+  parryWindow: 0.22
+  whiffRecovery: 0.38
+  successRecovery: 0.08
+  staminaCost: 10
+  frontArc: 200
+--- !u!114 &4056120838141977290
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3326043174834746180}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ab60a4ba494f742ca97a6c1e7ae43ae0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Arlen::Arlen.Player.PlayerHitReaction
+  health: {fileID: 0}
+  actionState: {fileID: 0}
+  controller: {fileID: 0}
+  minDamageToStun: 10
+  stunDuration: 0.35
+  knockbackSpeed: 5
+  graceInvulnerability: 0.4
+--- !u!114 &8950597167056431980
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3326043174834746180}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3fbd3cb6f76ef402883b66e1d9928142, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Arlen::Arlen.Combat.Targetable
+  team: 0
+  aimPoint: {fileID: 0}
   health: {fileID: 0}
 --- !u!1 &3637964839606222713
 GameObject:

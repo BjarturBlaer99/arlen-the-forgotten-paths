@@ -19,7 +19,8 @@ If the scene is missing, run **Tools ▸ Arlen ▸ Create Prototype Scene** (it 
 | Walk toggle | Left Ctrl | (stick tilt) |
 | Dodge | Left Alt (Option on Mac) | East |
 | Attack (3-hit combo) | Left mouse | West |
-| Parry / Interact | RMB / E — *reserved, not implemented yet* | LB / North |
+| Parry | Right mouse | LB |
+| Interact | E — *reserved for Milestone 3* | North |
 | Pause | Escape | Start |
 
 Bindings live in `Assets/Arlen/Input/ArlenControls.inputactions`.
@@ -31,8 +32,13 @@ Bindings live in `Assets/Arlen/Input/ArlenControls.inputactions`.
 - **Ruins** (south): pillars + lintel to test camera collision.
 - **Blight pool** (purple, south-west): damage over time. **Healing spring** (cyan, south-east): heals.
 - **Pulsing hazard** (far north): flickers then bursts — dodge through it to test i-frames.
+- **Boar Ruffian** (north-west clearing): wanders until it spots you ("!"), chases, and swings its club
+  after a telegraph (club raised, eyes glow). Parry just before the swing lands to stagger it for a
+  counter-attack, or dodge through it. Breaking its poise (≈ a full combo) also staggers it. It
+  leashes home if you run away and respawns a few seconds after dying.
+  Tune it in `Assets/Arlen/Data/Enemies/BoarRuffian_Stats.asset`.
 
-## Architecture (Milestone 1)
+## Architecture (Milestones 1–2)
 
 ```
 Scripts/
@@ -43,13 +49,24 @@ Scripts/
            PlayerDodge, PlayerRespawn
            PlayerAnimatorBridge → Animator parameter contract for future rigged models
            PlaceholderCatAnimator → procedural motion for the primitive placeholder
-  Combat/  IDamageable/DamageInfo, HealthComponent, StaminaComponent, PlayerMeleeCombat,
+  Combat/  IDamageable/DamageInfo/DamageResult, IDamageInterceptor, HealthComponent,
+           StaminaComponent, PlayerMeleeCombat, PlayerParry, Targetable (teams + registry),
            MeleeAttackStep, DamageFlash, TrainingDummy, HealthVolume, PulsingHazard
+  AI/      EnemyStats (ScriptableObject), EnemySensor (perception), EnemyMotor (NavMeshAgent),
+           EnemyMeleeAttack (execution), EnemyController (state machine brain),
+           BoarRuffianVisual (presentation only), NavMeshBootstrap, PrototypeEnemySpawner
+  Feedback/ HitStop, CameraShake, ImpactFxPool (pooled), PlayerCombatFeedback
   Camera/  ThirdPersonCameraController (orbit + sphere-cast collision, no Cinemachine)
-  UI/      PlayerHUD, ResourceBar (event-driven)
+  UI/      PlayerHUD, ResourceBar, WorldHealthBar (event-driven)
   Editor/  PrototypeSceneBuilder (Tools ▸ Arlen menu, rerunnable)
 Tests/EditMode, Tests/PlayMode (simulated keyboard/mouse via InputTestFixture)
 ```
+
+Damage flow: attacker → `IDamageable.ApplyDamage` → interceptors (parry) → health. The returned
+`DamageResult` lets attackers react (a parried boar staggers).
+
+New enemy types reuse Sensor/Motor/Attack/Controller with a new `EnemyStats` asset and visual;
+only genuinely new behaviour (ranged attacks, packs) needs new components.
 
 Visuals live under the player's `Visual` child; gameplay components never reference meshes.
 To swap in a Blender model: replace `Visual`'s children, remove `PlaceholderCatAnimator`, add an

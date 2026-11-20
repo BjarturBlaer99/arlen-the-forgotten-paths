@@ -201,7 +201,7 @@ namespace Arlen.Combat
                 dir.y = 0f;
                 dir = dir.sqrMagnitude > 0.0001f ? dir.normalized : transform.forward;
                 var info = new DamageInfo(step.damage, gameObject, col.ClosestPoint(center), dir);
-                if (target.ApplyDamage(info)) TargetHit?.Invoke(target, info);
+                if (target.ApplyDamage(info) == DamageResult.Applied) TargetHit?.Invoke(target, info);
             }
         }
 

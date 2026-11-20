@@ -163,7 +163,7 @@ namespace Arlen.Tests
 
             yield return WaitSeconds(dodge.Duration * 0.3f);
             Assert.IsTrue(Health.IsInvulnerable, "Should be invulnerable mid-dodge.");
-            bool hurt = Health.ApplyDamage(new DamageInfo(10f, null, Vector3.zero, Vector3.forward));
+            bool hurt = Health.ApplyDamage(new DamageInfo(10f, null, Vector3.zero, Vector3.forward)) == DamageResult.Applied;
             Assert.IsFalse(hurt, "Damage during i-frames should be ignored.");
             Assert.AreEqual(Health.Max, Health.Current);
 
