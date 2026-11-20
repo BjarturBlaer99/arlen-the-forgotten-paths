@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Arlen.AI;
 using Arlen.DialogueSystem;
 using Arlen.Interaction;
+using Arlen.Items;
 using Arlen.NPC;
 using Arlen.World;
 using UnityEditor;
@@ -34,6 +35,12 @@ namespace Arlen.Editor
 
         const float CabinZ = -34f;
         const float StreamZ = 24f;
+        static readonly Vector3 ShrinePos = new Vector3(18f, 0f, 80f);
+        static readonly Vector3 ShrinePathStart = new Vector3(1.5f, 0f, 73f);
+        static readonly Vector3 ShrinePathEnd = new Vector3(13f, 0f, 79f);
+
+        static RpgContentBuilder.Content items;
+        static readonly List<Renderer> RoadShimmer = new List<Renderer>();
 
         static bool rebuildPrefabs;
 
@@ -97,12 +104,16 @@ namespace Arlen.Editor
             rebuildPrefabs = rebuild;
             BuiltThisRun.Clear();
             MaterialCache.Clear();
+            RoadShimmer.Clear();
+            items = RpgContentBuilder.LoadItems(forceReload: true);
+            var roadQuest = RpgContentBuilder.LoadRoadQuest();
             EnsureFolder(Root + "/Scenes");
             EnsureFolder(EnvPrefabs);
             EnsureFolder(DialogueFolder);
 
             GameObject playerPrefab = PreparePlayerPrefab();
             GameObject boarPrefab = AssetExistsAt(BoarPrefabPath) ? AssetDatabase.LoadAssetAtPath<GameObject>(BoarPrefabPath) : BuildBoarPrefab();
+            LoadOrCreateBoarStats(); // fills in the quest id on existing stats assets
             var mabel = BuildMabelPrefab();
             var bram = BuildBramPrefab();
 
@@ -122,11 +133,13 @@ namespace Arlen.Editor
             // On the cabin porch, facing the village.
             spawn.SetPositionAndRotation(new Vector3(0f, 0.4f, CabinZ + 4.6f), Quaternion.identity);
             var hud = BuildPlayerRig(scene, playerPrefab, spawn);
+            hud.Quests.Configure(new[] { roadQuest }, new[] { roadQuest }, 2.5f);
 
             BakeNavMesh(environment, NavMeshPath);
             PlaceVillagers(scene, mabel, bram);
             PlaceForestEnemy(scene, boarPrefab);
             BuildAreas(hud);
+            PlaceWaybell(environment);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene, ScenePath);
@@ -171,6 +184,7 @@ namespace Arlen.Editor
         static void BuildCabinArea(Transform env)
         {
             var cabin = Place(GetPrefab("Building_Cabin", BuildCabin), env, new Vector3(0f, 0f, CabinZ), 0f);
+            ConfigureCabinStorage(cabin);
             var dirt = Mat("Dirt", new Color(0.66f, 0.55f, 0.38f));
             Prim(PrimitiveType.Cube, "Path_CabinToSquare", env, new Vector3(0f, 0.01f, -18f), new Vector3(3f, 0.02f, 22f), dirt, collider: false);
 
@@ -198,7 +212,43 @@ namespace Arlen.Editor
             for (int i = 0; i < 6; i++)
                 Prim(PrimitiveType.Cylinder, $"Log_{i}", env, new Vector3(-5.3f, 0.2f + (i / 3) * 0.36f, CabinZ - 1f + (i % 3) * 0.4f - (i / 3) * 0.2f),
                     new Vector3(0.36f, 0.6f, 0.36f), wood, collider: i < 3, euler: new Vector3(0f, 0f, 90f));
-            _ = cabin;
+        }
+
+        /// <summary>
+        /// Milestone 4 cabin wiring, done as overrides on the cabin instance so a hand-edited cabin prefab is
+        /// kept: the chest gets real storage and the spare sword on the rack becomes a pickup.
+        /// </summary>
+        static void ConfigureCabinStorage(GameObject cabin)
+        {
+            var chest = cabin.GetComponentInChildren<StorageChest>();
+            if (chest != null)
+            {
+                chest.ConfigureStorage("cabin_chest", "Cabin Chest",
+                    new ItemAmount(items.TrailRation, 3), new ItemAmount(items.Whetstone, 1),
+                    new ItemAmount(items.Rope, 1), new ItemAmount(items.OldCoins, 12));
+                PrefabUtility.RecordPrefabInstancePropertyModifications(chest);
+            }
+            else Debug.LogWarning("[Arlen] Cabin has no StorageChest; the chest won't store items.");
+
+            var sword = cabin.transform.Find("Interior/EquipmentRack/SpareSword");
+            if (sword != null)
+            {
+                var pickup = sword.gameObject.AddComponent<ItemPickup>();
+                pickup.Configure("cabin_rack_sabre", items.PathwardenSabre, 1, null,
+                    "You lift Eldon's old sabre from the rack. It still balances perfectly in your paw.",
+                    "Equip it from your pack (Tab) whenever you're ready.");
+                AddTrigger(sword.gameObject, new Vector3(0.6f, 1.4f, 0.6f));
+            }
+            else Debug.LogWarning("[Arlen] Cabin rack has no SpareSword; the Pathwarden Sabre pickup was skipped.");
+        }
+
+        static void AddTrigger(GameObject go, Vector3 worldSize)
+        {
+            var trig = go.AddComponent<BoxCollider>();
+            trig.isTrigger = true;
+            var s = go.transform.lossyScale;
+            trig.size = new Vector3(worldSize.x / Mathf.Max(0.01f, Mathf.Abs(s.x)), worldSize.y / Mathf.Max(0.01f, Mathf.Abs(s.y)), worldSize.z / Mathf.Max(0.01f, Mathf.Abs(s.z)));
+            trig.center = Vector3.zero;
         }
 
         /// <summary>The hero's cabin: enterable, with furniture and interactions. Origin = floor centre, door faces +Z.</summary>
@@ -549,6 +599,11 @@ namespace Arlen.Editor
             Prim(PrimitiveType.Cube, "ForestFloor", forest, new Vector3(0f, 0.005f, 72f), new Vector3(112f, 0.01f, 54f), mossFloor, false);
             Prim(PrimitiveType.Cylinder, "Clearing", forest, new Vector3(-16f, 0.008f, 68f), new Vector3(18f, 0.01f, 18f), Mat("Grass", Color.green), false);
             Prim(PrimitiveType.Cube, "Path_Clearing", forest, new Vector3(-7f, 0.012f, 66f), new Vector3(12f, 0.02f, 2.4f), dirt, false, new Vector3(0f, 12f, 0f));
+            // Faint side trail east to the Waybell shrine.
+            Vector3 trail = ShrinePathEnd - ShrinePathStart;
+            Prim(PrimitiveType.Cube, "Path_Shrine", forest, (ShrinePathStart + ShrinePathEnd) * 0.5f + Vector3.up * 0.011f, new Vector3(trail.magnitude, 0.02f, 2f), Mat("Dirt_Faint", new Color(0.56f, 0.5f, 0.36f)), false,
+                new Vector3(0f, -Mathf.Atan2(trail.z, trail.x) * Mathf.Rad2Deg, 0f));
+            Prim(PrimitiveType.Cylinder, "ShrineClearing", forest, ShrinePos + Vector3.up * 0.007f, new Vector3(18f, 0.01f, 18f), Mat("Grass", Color.green), false);
 
             // Signpost at the forest edge.
             var sign = new GameObject("Signpost_Mosswood").transform;
@@ -575,6 +630,7 @@ namespace Arlen.Editor
                 if (p.x < -1f && p.x > -12f && Mathf.Abs(p.z - (66f + (p.x + 7f) * 0.2f)) < 2.2f) continue; // side path
                 if (p.z < 34f && Mathf.Abs(p.x) < 10f) continue;                         // keep the entrance open
                 if ((p - new Vector3(2.6f, 0f, 38f)).sqrMagnitude < 4f) continue;
+                if (IsNearShrine(p)) continue;
                 var t = Place(trees[placed % 3 == 0 ? 1 : rng.Next(trees.Length)], forest, p, (float)rng.NextDouble() * 360f);
                 t.transform.localScale = Vector3.one * (1f + (float)rng.NextDouble() * 0.6f);
                 placed++;
@@ -584,7 +640,7 @@ namespace Arlen.Editor
             for (int i = 0; i < 18; i++)
             {
                 var p = new Vector3((float)(rng.NextDouble() * 100 - 50), 0f, 34f + (float)rng.NextDouble() * 60f);
-                if (Mathf.Abs(p.x) < 4f) continue;
+                if (Mathf.Abs(p.x) < 4f || IsNearShrine(p)) continue;
                 var r = Place(rock, forest, p, (float)rng.NextDouble() * 360f);
                 r.transform.localScale = Vector3.one * (0.8f + (float)rng.NextDouble() * 1.6f);
             }
@@ -601,15 +657,17 @@ namespace Arlen.Editor
             {
                 var mote = Prim(PrimitiveType.Sphere, $"Shimmer_{i}", end, new Vector3(-2.4f + i * 0.8f, 0.6f + (i % 3) * 0.7f, 0.2f), Vector3.one * 0.12f, shimmer, false);
                 mote.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+                RoadShimmer.Add(mote.GetComponent<Renderer>());
             }
             // Road fragments that fade into nothing
             for (int i = 0; i < 4; i++)
                 Prim(PrimitiveType.Cube, $"RoadStone_{i}", end, new Vector3(((i % 2) - 0.5f) * 1.4f, 0.03f, -2f + i * 0.9f), new Vector3(0.9f - i * 0.15f, 0.06f, 0.7f - i * 0.12f),
                     Mat("Cobblestone", Color.gray), false, new Vector3(0f, i * 17f, 0f));
-            AddExaminable(end.gameObject, "Examine", new Vector3(8f, 3f, 2f),
+            var roadEnd = AddExaminable(end.gameObject, "Examine", new Vector3(8f, 3f, 2f),
                 "The road should continue here. You walked it to the northern market only last spring.",
                 "Now there is only thick bramble, as if the path had never existed. Old paving stones simply... stop.",
-                "The air hums faintly, like a bell rung very far away.");
+                "The air hums faintly, like a bell rung very far away. The sound seems to come from somewhere east.");
+            roadEnd.SetId(RpgContentBuilder.VanishedRoadId);
 
             // Mossy milestone partway along the path.
             var stone = Prim(PrimitiveType.Cube, "Milestone", forest, new Vector3(-2.4f, 0.5f, 62f), new Vector3(0.5f, 1f, 0.35f), Mat("Stone", Color.gray), true, new Vector3(0f, 15f, -4f));
@@ -617,6 +675,161 @@ namespace Arlen.Editor
             AddExaminable(stone, "Examine", new Vector3(1.5f, 2f, 1.5f),
                 "An old Pathwarden milestone. The carved arrow points north, toward the brambles.",
                 "\"Northmarket, 9 miles.\" Nobody has cleared the moss off it in years.");
+
+            // Things to find along the way.
+            var herb = GetPrefab("Pickup_Sunmoss", BuildSunmossPickup);
+            PlacePickup(herb, forest, "sunmoss_forest_entrance", items.Sunmoss, 2, new Vector3(4.6f, 0f, 33f));
+            PlacePickup(herb, forest, "sunmoss_road_milestone", items.Sunmoss, 1, new Vector3(-2.3f, 0f, 56.5f));
+            PlacePickup(herb, forest, "sunmoss_shrine", items.Sunmoss, 2, ShrinePos + new Vector3(-4f, 0f, 5.5f));
+            PlacePickup(GetPrefab("Pickup_Token", BuildTokenPickup), forest, "pathwarden_token_milestone", items.PathwardenToken, 1, new Vector3(-1.7f, 0f, 61.2f));
+        }
+
+        static bool IsNearShrine(Vector3 p)
+        {
+            if ((p - ShrinePos).sqrMagnitude < 11f * 11f) return true;
+            Vector3 ab = ShrinePathEnd - ShrinePathStart;
+            float t = Mathf.Clamp01(Vector3.Dot(p - ShrinePathStart, ab) / ab.sqrMagnitude);
+            Vector3 closest = ShrinePathStart + ab * t;
+            closest.y = p.y;
+            return (p - closest).sqrMagnitude < 2.6f * 2.6f;
+        }
+
+        static void PlacePickup(GameObject prefab, Transform parent, string id, ItemDefinition item, int count, Vector3 position)
+        {
+            var go = Place(prefab, parent, Vector3.zero, 0f);
+            go.transform.position = position;
+            go.name = $"Pickup_{id}";
+            var pickup = go.GetComponent<ItemPickup>();
+            pickup.Configure(id, item, count);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(pickup);
+        }
+
+        static GameObject BuildSunmossPickup()
+        {
+            var root = new GameObject("Pickup_Sunmoss");
+            var moss = Mat("Pickup_Sunmoss", new Color(0.9f, 0.8f, 0.3f), emission: new Color(0.35f, 0.28f, 0.04f));
+            var leaf = Mat("Leaves_B", new Color(0.45f, 0.65f, 0.25f));
+            Prim(PrimitiveType.Sphere, "Base", root.transform, new Vector3(0f, 0.06f, 0f), new Vector3(0.5f, 0.12f, 0.5f), leaf, false);
+            for (int i = 0; i < 4; i++)
+            {
+                float a = i * Mathf.PI * 0.5f + 0.4f;
+                Prim(PrimitiveType.Sphere, $"Tuft_{i}", root.transform, new Vector3(Mathf.Cos(a) * 0.14f, 0.16f + (i % 2) * 0.05f, Mathf.Sin(a) * 0.14f), Vector3.one * 0.18f, moss, false);
+            }
+            root.AddComponent<ItemPickup>();
+            var trig = root.AddComponent<SphereCollider>();
+            trig.isTrigger = true;
+            trig.radius = 0.6f;
+            trig.center = new Vector3(0f, 0.3f, 0f);
+            return root;
+        }
+
+        static GameObject BuildTokenPickup()
+        {
+            var root = new GameObject("Pickup_Token");
+            var brass = Mat("Pickup_Brass", new Color(0.85f, 0.68f, 0.3f), emission: new Color(0.4f, 0.28f, 0.05f));
+            Prim(PrimitiveType.Cylinder, "Token", root.transform, new Vector3(0f, 0.05f, 0f), new Vector3(0.22f, 0.02f, 0.22f), brass, false, new Vector3(8f, 0f, 14f));
+            Prim(PrimitiveType.Cube, "Glint", root.transform, new Vector3(0f, 0.08f, 0f), new Vector3(0.05f, 0.01f, 0.16f), Mat("Waybell_Light", new Color(0.6f, 1f, 0.95f), emission: new Color(0.6f, 1.6f, 1.5f)), false, new Vector3(0f, 45f, 0f));
+            root.AddComponent<ItemPickup>();
+            var trig = root.AddComponent<SphereCollider>();
+            trig.isTrigger = true;
+            trig.radius = 0.6f;
+            trig.center = new Vector3(0f, 0.3f, 0f);
+            return root;
+        }
+
+        // ───────────────────────────── Waybell shrine ─────────────────────────────
+
+        static void PlaceWaybell(Transform env)
+        {
+            var forest = env.Find("Mosswood");
+            var shrine = Place(GetPrefab("Building_WaybellShrine", BuildWaybellShrine), forest != null ? forest : env, Vector3.zero, 0f);
+            shrine.transform.position = ShrinePos;
+            shrine.transform.rotation = Quaternion.Euler(0f, -100f, 0f); // bell faces the trail
+            var bell = shrine.GetComponent<Waybell>();
+            var so = new SerializedObject(bell);
+            so.FindProperty("waybellId").stringValue = RpgContentBuilder.WaybellId;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            SetArray(bell, "resonators", RoadShimmer.ToArray());
+        }
+
+        /// <summary>Ring of broken pillars around a stone platform; the bell hangs from a stone frame. Origin = ground centre.</summary>
+        static GameObject BuildWaybellShrine()
+        {
+            var root = new GameObject("Building_WaybellShrine");
+            var t = root.transform;
+            var stone = Mat("Stone_Ancient", new Color(0.6f, 0.62f, 0.6f));
+            var moss = Mat("Roof_Moss", new Color(0.36f, 0.48f, 0.25f));
+            var bronze = Mat("Waybell_Bronze", new Color(0.55f, 0.42f, 0.22f), emission: Color.black);
+            var runeMat = Mat("Waybell_Runes", new Color(0.32f, 0.36f, 0.36f), emission: Color.black);
+            var lightMat = Mat("Waybell_Light", new Color(0.6f, 1f, 0.95f), emission: new Color(0.6f, 1.6f, 1.5f));
+            var glow = new List<Renderer>();
+
+            // Low platform (0.3 m: within the player's step height).
+            Prim(PrimitiveType.Cylinder, "Platform", t, new Vector3(0f, 0.15f, 0f), new Vector3(9f, 0.15f, 9f), stone, true);
+            var circle = Prim(PrimitiveType.Cylinder, "RuneCircle", t, new Vector3(0f, 0.305f, 0f), new Vector3(6.4f, 0.005f, 6.4f), runeMat, false);
+            circle.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+            glow.Add(circle.GetComponent<Renderer>());
+            Prim(PrimitiveType.Cylinder, "RuneCircleInner", t, new Vector3(0f, 0.31f, 0f), new Vector3(5.6f, 0.005f, 5.6f), stone, false);
+            for (int i = 0; i < 8; i++)
+            {
+                float a = i * 45f;
+                var mark = Prim(PrimitiveType.Cube, $"Rune_{i}", t, Quaternion.Euler(0f, a, 0f) * new Vector3(0f, 0.316f, 3f), new Vector3(0.18f, 0.01f, 0.45f), runeMat, false, new Vector3(0f, a, 0f));
+                glow.Add(mark.GetComponent<Renderer>());
+            }
+
+            // Broken pillars
+            float[] heights = { 2.8f, 1.4f, 3.2f, 1.0f, 2.2f, 1.7f };
+            for (int i = 0; i < heights.Length; i++)
+            {
+                float a = (i * 60f + 30f) * Mathf.Deg2Rad;
+                var pos = new Vector3(Mathf.Cos(a) * 3.9f, 0.3f + heights[i] * 0.5f, Mathf.Sin(a) * 3.9f);
+                var pillar = Prim(PrimitiveType.Cylinder, $"Pillar_{i}", t, pos, new Vector3(0.6f, heights[i] * 0.5f, 0.6f), stone, true);
+                Prim(PrimitiveType.Cylinder, "Moss", pillar.transform, new Vector3(0f, 1f, 0f), new Vector3(1.08f, 0.08f, 1.08f), moss, false);
+            }
+
+            // Frame and bell
+            Prim(PrimitiveType.Cube, "FramePost_L", t, new Vector3(-1.35f, 2.05f, 0f), new Vector3(0.38f, 3.5f, 0.38f), stone, true);
+            Prim(PrimitiveType.Cube, "FramePost_R", t, new Vector3(1.35f, 2.05f, 0f), new Vector3(0.38f, 3.5f, 0.38f), stone, true);
+            Prim(PrimitiveType.Cube, "FrameBeam", t, new Vector3(0f, 3.95f, 0f), new Vector3(3.3f, 0.42f, 0.55f), stone, true);
+            Prim(PrimitiveType.Cube, "FrameMoss", t, new Vector3(0f, 4.2f, 0f), new Vector3(3.4f, 0.1f, 0.6f), moss, false);
+            var pivot = new GameObject("BellPivot").transform;
+            pivot.SetParent(t, false);
+            pivot.localPosition = new Vector3(0f, 3.74f, 0f);
+            glow.Add(Prim(PrimitiveType.Sphere, "BellCrown", pivot, new Vector3(0f, -0.25f, 0f), new Vector3(0.85f, 0.55f, 0.85f), bronze, false).GetComponent<Renderer>());
+            glow.Add(Prim(PrimitiveType.Cylinder, "Bell", pivot, new Vector3(0f, -0.75f, 0f), new Vector3(1.0f, 0.55f, 1.0f), bronze, false).GetComponent<Renderer>());
+            glow.Add(Prim(PrimitiveType.Cylinder, "BellLip", pivot, new Vector3(0f, -1.3f, 0f), new Vector3(1.3f, 0.06f, 1.3f), bronze, false).GetComponent<Renderer>());
+            Prim(PrimitiveType.Sphere, "Clapper", pivot, new Vector3(0f, -1.38f, 0f), Vector3.one * 0.26f, Mat("Club_Iron", Color.gray), false);
+
+            // Ring of light that rolls outward when the bell wakes.
+            var ring = new GameObject("LightRing").transform;
+            ring.SetParent(t, false);
+            ring.localPosition = new Vector3(0f, 0.9f, 0f);
+            for (int i = 0; i < 28; i++)
+            {
+                var mote = Prim(PrimitiveType.Sphere, $"Mote_{i}", ring, Vector3.zero, Vector3.one * 0.3f, lightMat, false);
+                mote.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.Off;
+            }
+
+            var trig = root.AddComponent<BoxCollider>();
+            trig.isTrigger = true;
+            trig.center = new Vector3(0f, 1.5f, 0f);
+            trig.size = new Vector3(3.4f, 3f, 3.4f);
+
+            var bell = root.AddComponent<Waybell>();
+            bell.Configure("waybell", pivot, glow.ToArray(), ring, null);
+            bell.SetText(new[]
+            {
+                "You lay a paw on the cold bronze. For a heartbeat, nothing.",
+                "Then the Waybell sings: one deep note you feel in your bones more than hear.",
+                "Light races through the runes beneath your feet. Somewhere to the west, the brambles on the old road shiver.",
+                "For an instant you see it clearly: the Mosswood Road, paved and whole, running north. Then the forest closes over it again.",
+                "The bell knew you. Somehow, it knew you.",
+            }, new[]
+            {
+                "The Waybell hums softly, warm to the touch, as if it is remembering something.",
+                "The road beyond the brambles is still lost. Whatever woke here is only the beginning.",
+            });
+            return root;
         }
 
         static void BuildAreas(HudRefs hud)
@@ -627,12 +840,21 @@ namespace Arlen.Editor
             village.transform.position = new Vector3(0f, -1f, -14f);
             village.SetSize(new Vector3(116f, 12f, 72f));
             village.Configure("Haven Village", "A quiet woodland village", hud.Banner);
+            village.SetId("haven_village");
 
             var forest = new GameObject("Area_Mosswood").AddComponent<AreaZone>();
             forest.transform.SetParent(areas);
             forest.transform.position = new Vector3(0f, -1f, 66f);
             forest.SetSize(new Vector3(116f, 12f, 66f));
             forest.Configure("Mosswood", "The forest road north", hud.Banner);
+            forest.SetId("mosswood");
+
+            var shrine = new GameObject("Area_WaybellShrine").AddComponent<AreaZone>();
+            shrine.transform.SetParent(areas);
+            shrine.transform.position = ShrinePos + Vector3.down;
+            shrine.SetSize(new Vector3(17f, 12f, 17f));
+            shrine.Configure("Forgotten Shrine", "Where a Waybell keeps its silence", hud.Banner);
+            shrine.SetId(RpgContentBuilder.ShrineAreaId);
         }
 
         // ───────────────────────────── Characters ─────────────────────────────
@@ -743,11 +965,17 @@ namespace Arlen.Editor
             m.transform.SetParent(group);
             // Beside her bread stall, facing the square.
             m.transform.SetPositionAndRotation(new Vector3(-15.8f, 0f, 1.9f), Quaternion.Euler(0f, 90f, 0f));
+            var mabelNpc = m.GetComponent<NpcCharacter>();
+            mabelNpc.ConfigureQuestContent(new[] { RpgContentBuilder.RoadTalk(RpgContentBuilder.MabelRoadDialogue()) }, new ItemAmount(items.HoneyRoll, 1));
+            PrefabUtility.RecordPrefabInstancePropertyModifications(mabelNpc);
 
             var b = (GameObject)PrefabUtility.InstantiatePrefab(bram, scene);
             b.transform.SetParent(group);
             // By his anvil.
             b.transform.SetPositionAndRotation(new Vector3(18.4f, 0.16f, 4.8f), Quaternion.Euler(0f, -100f, 0f));
+            var bramNpc = b.GetComponent<NpcCharacter>();
+            bramNpc.ConfigureQuestContent(new[] { RpgContentBuilder.RoadTalk(RpgContentBuilder.BramRoadDialogue()) }, default);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(bramNpc);
         }
 
         static void PlaceForestEnemy(Scene scene, GameObject boarPrefab)
@@ -963,7 +1191,7 @@ namespace Arlen.Editor
             return frame;
         }
 
-        static void AddExaminable(GameObject go, string verb, Vector3 triggerSize, params string[] lines)
+        static Examinable AddExaminable(GameObject go, string verb, Vector3 triggerSize, params string[] lines)
         {
             var ex = go.AddComponent<Examinable>();
             ex.SetText(verb, lines);
@@ -973,6 +1201,7 @@ namespace Arlen.Editor
             var s = go.transform.lossyScale;
             trig.size = new Vector3(triggerSize.x / Mathf.Max(0.01f, s.x), triggerSize.y / Mathf.Max(0.01f, s.y), triggerSize.z / Mathf.Max(0.01f, s.z));
             trig.center = Vector3.zero;
+            return ex;
         }
 
         static string ColorKey(Color c) => $"{(int)(c.r * 100)}_{(int)(c.g * 100)}_{(int)(c.b * 100)}";

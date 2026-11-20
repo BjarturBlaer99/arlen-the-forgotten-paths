@@ -67,6 +67,13 @@ namespace Arlen.Combat
 
         public void Refill() => Pool.Refill();
 
+        /// <summary>Changes max stamina (equipment bonuses).</summary>
+        public void SetMaxStamina(float max)
+        {
+            maxStamina = Mathf.Max(1f, max);
+            Pool.SetMax(maxStamina);
+        }
+
         void OnValidate()
         {
             if (pool == null) return;

@@ -10,7 +10,11 @@ namespace Arlen.AI
     public class EnemyStats : ScriptableObject
     {
         [Header("Identity")]
+        [Tooltip("Stable id for quests (e.g. \"boar_ruffian\"). Defaults to the display name.")]
+        public string id;
         public string displayName = "Enemy";
+
+        public string Id => string.IsNullOrEmpty(id) ? displayName : id;
 
         [Header("Health")]
         [Min(1f)] public float maxHealth = 80f;

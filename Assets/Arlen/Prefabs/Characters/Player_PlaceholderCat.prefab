@@ -1305,6 +1305,7 @@ GameObject:
   - component: {fileID: 8707849126217601756}
   - component: {fileID: 8125785243370702275}
   - component: {fileID: 5993934031665918005}
+  - component: {fileID: 8137020240819459020}
   m_Layer: 0
   m_Name: Visual
   m_TagString: Untagged
@@ -1367,6 +1368,21 @@ MonoBehaviour:
   hitColor: {r: 1, g: 0.25, b: 0.2, a: 1}
   avoidedColor: {r: 0.6, g: 0.9, b: 1, a: 1}
   duration: 0.15
+--- !u!114 &8137020240819459020
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2148512431409375682}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1cdd9e0d4d25b486c8ba6e0fe4914cfd, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Arlen::Arlen.Items.EquipmentVisuals
+  equipment: {fileID: 7788430211956389025}
+  blade: {fileID: 906656959808805690}
+  bladeRenderer: {fileID: 3557602544951405168}
 --- !u!1 &2213252613680933455
 GameObject:
   m_ObjectHideFlags: 0
@@ -1967,6 +1983,9 @@ GameObject:
   - component: {fileID: 4056120838141977290}
   - component: {fileID: 8950597167056431980}
   - component: {fileID: 298531477622022397}
+  - component: {fileID: 5274481851067389661}
+  - component: {fileID: 7788430211956389025}
+  - component: {fileID: 1238661999754611523}
   m_Layer: 0
   m_Name: Player_PlaceholderCat
   m_TagString: Untagged
@@ -2325,12 +2344,54 @@ MonoBehaviour:
   controller: {fileID: 0}
   dialogue: {fileID: 0}
   screenFader: {fileID: 0}
+  quests: {fileID: 0}
+  inventoryScreen: {fileID: 0}
   radius: 2.4
   maxAngle: 80
   mask:
     serializedVersion: 2
     m_Bits: 4294967295
   originOffset: {x: 0, y: 1, z: 0}
+--- !u!114 &5274481851067389661
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3326043174834746180}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a012e5532181947d5b0a1bdb9cc9d562, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Arlen::Arlen.Items.PlayerInventory
+  capacity: 24
+  startingItems: []
+--- !u!114 &7788430211956389025
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3326043174834746180}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d96e06c62b82f4fadb78a2ce4d80b0bc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Arlen::Arlen.Items.PlayerEquipment
+  startingWeapon: {fileID: 11400000, guid: 0dec049f2ebd44750ab5039adf7290f5, type: 2}
+  startingCharm: {fileID: 0}
+--- !u!114 &1238661999754611523
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3326043174834746180}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 82335d9afab66406696e0a2bb89932e5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Arlen::Arlen.Saving.PlayerSaveState
 --- !u!1 &3637964839606222713
 GameObject:
   m_ObjectHideFlags: 0

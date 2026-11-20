@@ -170,6 +170,9 @@ namespace Arlen.Editor
             public AreaBanner Banner;
             public DialogueRunner Dialogue;
             public ScreenFader Fader;
+            public Quests.QuestManager Quests;
+            public Saving.SaveManager Saves;
+            public InventoryScreen Inventory;
         }
 
         internal static void SetupLighting()
@@ -415,6 +418,7 @@ namespace Arlen.Editor
                 AddMilestone2PlayerComponents(root);
 
                 var visual = BuildCatVisual(root.transform, CatLook.Wayfinder(), out var body, out var tail, out var sword);
+                RpgRigBuilder.AddMilestone4PlayerComponents(root);
                 var anim = visual.gameObject.AddComponent<PlaceholderCatAnimator>();
                 Set(anim, "body", body);
                 Set(anim, "tail", tail);
@@ -597,7 +601,9 @@ namespace Arlen.Editor
             var root = PrefabUtility.LoadPrefabContents(PlayerPrefabPath);
             try
             {
-                if (AddMilestone2PlayerComponents(root))
+                bool changed = AddMilestone2PlayerComponents(root);
+                changed |= RpgRigBuilder.AddMilestone4PlayerComponents(root);
+                if (changed)
                 {
                     PrefabUtility.SaveAsPrefabAsset(root, PlayerPrefabPath);
                     Debug.Log($"[Arlen] Upgraded {PlayerPrefabPath} with newer player components.");
@@ -614,10 +620,19 @@ namespace Arlen.Editor
         internal static EnemyStats LoadOrCreateBoarStats()
         {
             var stats = AssetDatabase.LoadAssetAtPath<EnemyStats>(BoarStatsPath);
-            if (stats != null) return stats;
+            if (stats != null)
+            {
+                if (string.IsNullOrEmpty(stats.id)) // Milestone 4: quests refer to enemies by id
+                {
+                    stats.id = "boar_ruffian";
+                    EditorUtility.SetDirty(stats);
+                }
+                return stats;
+            }
             EnsureFolder(Root + "/Data/Enemies");
             stats = ScriptableObject.CreateInstance<EnemyStats>();
             stats.displayName = "Boar Ruffian";
+            stats.id = "boar_ruffian";
             // Defaults in EnemyStats are tuned for the Boar Ruffian; adjust the asset in the Inspector.
             AssetDatabase.CreateAsset(stats, BoarStatsPath);
             AssetDatabase.SaveAssets();
@@ -840,7 +855,7 @@ namespace Arlen.Editor
                 new Color(0.55f, 0.85f, 0.35f), new Color(0.9f, 0.95f, 0.6f, 0.6f));
 
             var hint = MakeText(canvasGo.transform, "ControlsHint", font, 20, TextAnchor.LowerLeft,
-                "WASD move · Mouse look · Shift sprint · Ctrl walk · Space jump · Alt dodge · LMB attack · RMB parry · E interact · Esc pause");
+                "WASD move · Mouse look · Shift sprint · Ctrl walk · Space jump · Alt dodge · LMB attack · RMB parry · E interact · Tab pack · Esc pause");
             Anchor(hint.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(40f, 30f), new Vector2(1400f, 30f));
             hint.color = new Color(1f, 1f, 1f, 0.8f);
 
@@ -872,9 +887,8 @@ namespace Arlen.Editor
 
             var resume = MakeButton(pauseRoot.transform, "ResumeButton", font, "Resume", new Vector2(0f, -10f));
             UnityEventTools.AddPersistentListener(resume.onClick, pause.Resume);
-            var quit = MakeButton(pauseRoot.transform, "QuitButton", font, "Quit", new Vector2(0f, -90f));
+            var quit = MakeButton(pauseRoot.transform, "QuitButton", font, "Quit", new Vector2(0f, -250f));
             UnityEventTools.AddPersistentListener(quit.onClick, pause.QuitGame);
-            pauseRoot.SetActive(false);
 
             var es = new GameObject("EventSystem");
             es.AddComponent<EventSystem>();
@@ -882,6 +896,8 @@ namespace Arlen.Editor
 
             var refs = new HudRefs();
             BuildExplorationUI(canvasGo.transform, font, player, systems, refs);
+            RpgRigBuilder.BuildRpgSystems(canvasGo.transform, font, player, systems, refs, pauseRoot);
+            pauseRoot.SetActive(false);
             pauseRoot.transform.SetAsLastSibling(); // pause menu draws above everything
             return refs;
         }

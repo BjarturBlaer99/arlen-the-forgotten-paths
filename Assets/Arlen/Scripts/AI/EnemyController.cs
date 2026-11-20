@@ -282,6 +282,7 @@ namespace Arlen.AI
             motor.SetNavigationEnabled(false);
             SetCollidersEnabled(false);
             Died?.Invoke();
+            if (team == Team.Enemy) Core.WorldSignals.Raise(Core.SignalKind.Defeated, stats.Id);
             Invoke(nameof(ExpireCorpse), stats.corpseDuration);
         }
 

@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: df58795d0a3134c5da043aa1a759d47b, type: 3}
+  m_Name: Mabel_Quest_Road
+  m_EditorClassIdentifier: Arlen::Arlen.DialogueSystem.DialogueData
+  defaultSpeaker: Mabel
+  lines:
+  - speaker: You
+    text: Mabel, have any traders come down the Mosswood Road lately? From the northern market?
+  - speaker: 
+    text: The Mosswood... road? There's no road through Mosswood, dear. Just trees, boars and that silly old signpost.
+  - speaker: 
+    text: Though now you mention it, Eldon asked me something just like that. The last morning I saw him.
+  - speaker: 
+    text: He kept staring north, muttering about "the bells going quiet". Then he bought two loaves instead of one.
+  - speaker: You
+    text: Two loaves. He was packing for a trip.
+  - speaker: 
+    text: If you go poking about in Mosswood, mind those ruffians. And you come back for supper, you hear?

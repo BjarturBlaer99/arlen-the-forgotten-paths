@@ -56,9 +56,22 @@ namespace Arlen.Combat
 
         void Begin(Color color)
         {
+            // Other presentation (e.g. equipped weapon tint) may have recoloured a renderer since Awake.
+            if (timer <= 0f) CaptureCurrentColors();
             flashColor = color;
             timer = duration;
             Apply(1f);
+        }
+
+        void CaptureCurrentColors()
+        {
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                var r = renderers[i];
+                if (r == null) continue;
+                r.GetPropertyBlock(block);
+                if (block.HasColor(BaseColorId)) originalColors[i] = block.GetColor(BaseColorId);
+            }
         }
 
         void Update()

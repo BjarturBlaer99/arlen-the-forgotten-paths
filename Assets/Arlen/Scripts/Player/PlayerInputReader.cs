@@ -19,7 +19,7 @@ namespace Arlen.Player
         [SerializeField, Min(0f)] float inputBufferTime = 0.15f;
 
         InputActionMap map;
-        InputAction move, look, jump, sprint, walk, dodge, attack, parry, interact, pause;
+        InputAction move, look, jump, sprint, walk, dodge, attack, parry, interact, pause, inventory;
 
         float jumpPressedAt = float.NegativeInfinity;
         float dodgePressedAt = float.NegativeInfinity;
@@ -51,6 +51,8 @@ namespace Arlen.Player
         public event Action SubmitPressed;
 
         public event Action PausePressed;
+        /// <summary>Open/close the inventory. Raised even while blocked so the open screen can close itself.</summary>
+        public event Action InventoryPressed;
         /// <summary>Gameplay interaction (doors, NPCs). Not raised while blocked.</summary>
         public event Action InteractPressed;
 
@@ -92,6 +94,7 @@ namespace Arlen.Player
             parry = Find("Parry");
             interact = Find("Interact");
             pause = Find("Pause");
+            inventory = Find("Inventory");
             return true;
         }
 
@@ -113,6 +116,7 @@ namespace Arlen.Player
             Subscribe(parry, OnParry);
             Subscribe(interact, OnInteract);
             Subscribe(pause, OnPause);
+            Subscribe(inventory, OnInventory);
             map.Enable();
         }
 
@@ -126,6 +130,7 @@ namespace Arlen.Player
             Unsubscribe(parry, OnParry);
             Unsubscribe(interact, OnInteract);
             Unsubscribe(pause, OnPause);
+            Unsubscribe(inventory, OnInventory);
             map.Disable();
             Move = Vector2.zero;
             Look = Vector2.zero;
@@ -178,6 +183,7 @@ namespace Arlen.Player
         }
 
         void OnPause(InputAction.CallbackContext _) => PausePressed?.Invoke();
+        void OnInventory(InputAction.CallbackContext _) => InventoryPressed?.Invoke();
 
         /// <summary>Returns true (once) if Jump was pressed within the buffer window.</summary>
         public bool ConsumeJump() => Consume(ref jumpPressedAt);

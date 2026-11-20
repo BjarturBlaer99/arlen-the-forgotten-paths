@@ -1,0 +1,49 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00617170ea86a410b81ed65f815fd24e, type: 3}
+  m_Name: Quest_RoadThatVanished
+  m_EditorClassIdentifier: Arlen::Arlen.Quests.QuestDefinition
+  id: road_that_vanished
+  title: The Road That Vanished
+  description: The Mosswood Road, the road you inked onto Eldon's map yourself, is gone, and nobody in Haven remembers it ever existed. Except you.
+  objectives:
+  - id: ask_about_road
+    description: Ask Mabel or Bram about the Mosswood Road
+    kind: 0
+    targetIds:
+    - ask_about_road
+    requiredCount: 1
+  - id: investigate_road
+    description: Find where the road ends in Mosswood
+    kind: 1
+    targetIds:
+    - vanished_road
+    requiredCount: 1
+  - id: defeat_ruffian
+    description: Defeat the Boar Ruffian prowling the Mosswood clearing
+    kind: 2
+    targetIds:
+    - boar_ruffian
+    requiredCount: 1
+  - id: find_shrine
+    description: Follow the faint humming deeper into Mosswood
+    kind: 3
+    targetIds:
+    - waybell_shrine
+    requiredCount: 1
+  - id: ring_waybell
+    description: Ring the silent Waybell
+    kind: 4
+    targetIds:
+    - waybell_mosswood
+    requiredCount: 1
+  completionText: The bell remembers the road. Somewhere beyond the brambles, so might Eldon.

@@ -97,6 +97,25 @@ namespace Arlen.Tests
             return boar;
         }
 
+        /// <summary>Sets a private serialized field the way a builder would (searches base classes too).</summary>
+        public static void SetField(object target, string field, object value)
+        {
+            var type = target.GetType();
+            while (type != null)
+            {
+                var f = type.GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (f != null) { f.SetValue(target, value); return; }
+                type = type.BaseType;
+            }
+            throw new System.ArgumentException($"Field '{field}' not found on {target.GetType().Name}.");
+        }
+
+        /// <summary>Waits a number of frames (works while timeScale is 0, e.g. with the inventory open).</summary>
+        public static IEnumerator WaitFrames(int frames)
+        {
+            for (int i = 0; i < frames; i++) yield return null;
+        }
+
         public static IEnumerator WaitSeconds(float seconds)
         {
             float end = Time.time + seconds;

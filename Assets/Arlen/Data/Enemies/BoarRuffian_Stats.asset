@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9b61cc5bb345f4afabc538dac6a2aeab, type: 3}
   m_Name: BoarRuffian_Stats
   m_EditorClassIdentifier: Arlen::Arlen.AI.EnemyStats
+  id: boar_ruffian
   displayName: Boar Ruffian
   maxHealth: 80
   poise: 25

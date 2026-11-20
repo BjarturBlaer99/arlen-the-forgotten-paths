@@ -27,19 +27,19 @@ namespace Arlen.Core
 
         void OnEnable()
         {
-            if (input != null) input.PausePressed += Toggle;
+            if (input != null) input.PausePressed += OnPausePressed;
         }
 
         void OnDisable()
         {
-            if (input != null) input.PausePressed -= Toggle;
+            if (input != null) input.PausePressed -= OnPausePressed;
             if (IsPaused) SetPaused(false);
         }
 
         void Update()
         {
             // Clicking the Game view after Escape/alt-tab recaptures the mouse.
-            if (!IsPaused && Cursor.lockState != CursorLockMode.Locked &&
+            if (!IsPaused && !ModalScreens.AnyOpen && Cursor.lockState != CursorLockMode.Locked &&
                 Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
             {
                 ThirdPersonCameraController.SetCursorLocked(true);
@@ -48,6 +48,13 @@ namespace Arlen.Core
         }
 
         public void Toggle() => SetPaused(!IsPaused);
+
+        /// <summary>Escape/Start: closes an open menu (inventory, chest) first, otherwise toggles pause.</summary>
+        void OnPausePressed()
+        {
+            if (!IsPaused && ModalScreens.TryCloseTop()) return;
+            Toggle();
+        }
         public void Resume() => SetPaused(false);
 
         public void SetPaused(bool paused)

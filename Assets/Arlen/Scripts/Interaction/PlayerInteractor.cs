@@ -2,6 +2,7 @@ using System;
 using Arlen.Combat;
 using Arlen.DialogueSystem;
 using Arlen.Player;
+using Arlen.Quests;
 using Arlen.UI;
 using UnityEngine;
 
@@ -23,6 +24,10 @@ namespace Arlen.Interaction
         [Tooltip("Scene service used by NPCs and examinable objects.")]
         [SerializeField] DialogueRunner dialogue;
         [SerializeField] ScreenFader screenFader;
+        [Tooltip("Lets NPCs pick quest-aware conversations.")]
+        [SerializeField] QuestManager quests;
+        [Tooltip("Used by chests to show their contents.")]
+        [SerializeField] InventoryScreen inventoryScreen;
 
         [Header("Detection")]
         [SerializeField, Min(0.1f)] float radius = 2.4f;
@@ -35,6 +40,8 @@ namespace Arlen.Interaction
         public IInteractable Focus { get; private set; }
         public DialogueRunner Dialogue => dialogue;
         public ScreenFader ScreenFader => screenFader;
+        public IQuestQuery Quests => quests;
+        public InventoryScreen InventoryScreen => inventoryScreen;
         public HealthComponent Health { get; private set; }
         public StaminaComponent Stamina { get; private set; }
 
@@ -46,6 +53,12 @@ namespace Arlen.Interaction
         {
             dialogue = dialogueRunner;
             screenFader = fader;
+        }
+
+        public void SetGameServices(QuestManager questManager, InventoryScreen screen)
+        {
+            quests = questManager;
+            inventoryScreen = screen;
         }
 
         void Awake()

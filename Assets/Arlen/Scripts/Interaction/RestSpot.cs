@@ -3,8 +3,8 @@ using UnityEngine;
 namespace Arlen.Interaction
 {
     /// <summary>
-    /// Bed or bedroll: fades out, restores health and stamina, fades back in.
-    /// Saving progress hooks in here once the save system exists (Milestone 4).
+    /// Bed or bedroll: fades out, restores health and stamina, fades back in. <see cref="AnyRested"/>
+    /// fires at the darkest moment; the save system listens to it.
     /// </summary>
     public class RestSpot : MonoBehaviour, IInteractable
     {
@@ -14,6 +14,12 @@ namespace Arlen.Interaction
         [TextArea(2, 4)] [SerializeField] string[] afterRestLines = { "You rest for a while. Body and mind feel renewed." };
 
         bool resting;
+
+        /// <summary>Raised (with the bed) once the player has been restored, while the screen is dark.</summary>
+        public static event System.Action<RestSpot> AnyRested;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics() => AnyRested = null;
 
         public string InteractionPrompt => verb;
         public Vector3 InteractionPoint => transform.position + Vector3.up * 0.5f;
@@ -31,6 +37,7 @@ namespace Arlen.Interaction
             {
                 if (interactor.Health != null) interactor.Health.Heal(interactor.Health.Max);
                 if (interactor.Stamina != null) interactor.Stamina.Refill();
+                AnyRested?.Invoke(this);
             }
 
             void Done()

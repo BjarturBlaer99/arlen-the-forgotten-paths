@@ -58,6 +58,8 @@ namespace Arlen.Combat
         /// <summary>0..1 progress through the current phase.</summary>
         public float PhaseProgress { get; private set; }
         public int ComboLength => combo.Length;
+        /// <summary>Scales every combo step's damage (set by equipment).</summary>
+        public float DamageMultiplier { get; set; } = 1f;
 
         /// <summary>(stepIndex, step)</summary>
         public event Action<int, MeleeAttackStep> AttackStarted;
@@ -200,7 +202,7 @@ namespace Arlen.Combat
                 Vector3 dir = col.bounds.center - transform.position;
                 dir.y = 0f;
                 dir = dir.sqrMagnitude > 0.0001f ? dir.normalized : transform.forward;
-                var info = new DamageInfo(step.damage, gameObject, col.ClosestPoint(center), dir);
+                var info = new DamageInfo(step.damage * DamageMultiplier, gameObject, col.ClosestPoint(center), dir);
                 if (target.ApplyDamage(info) == DamageResult.Applied) TargetHit?.Invoke(target, info);
             }
         }

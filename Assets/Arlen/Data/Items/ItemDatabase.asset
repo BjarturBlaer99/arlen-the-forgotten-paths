@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8bd2153dd8eaf49b3942ee8c4b5b151a, type: 3}
+  m_Name: ItemDatabase
+  m_EditorClassIdentifier: Arlen::Arlen.Items.ItemDatabase
+  items:
+  - {fileID: 11400000, guid: 329a9de32138e404081d987d6f34543f, type: 2}
+  - {fileID: 11400000, guid: 2ccfca629589a42119a7f363fa9d1121, type: 2}
+  - {fileID: 11400000, guid: f5f8f40981bcc426a944290f43abe584, type: 2}
+  - {fileID: 11400000, guid: 63a96abd9844643338d76d2c5fc8cd93, type: 2}
+  - {fileID: 11400000, guid: f0644416c869c4a21ac73fcd4f7beb40, type: 2}
+  - {fileID: 11400000, guid: 5686fbd73d9d044549e9a15070e5f927, type: 2}
+  - {fileID: 11400000, guid: d00ff0c794d6047debb145a3c2aa2328, type: 2}
+  - {fileID: 11400000, guid: 0dec049f2ebd44750ab5039adf7290f5, type: 2}
+  - {fileID: 11400000, guid: 36c8a01ac906442629bce7433147a5be, type: 2}
