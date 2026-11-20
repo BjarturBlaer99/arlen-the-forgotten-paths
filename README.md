@@ -2,6 +2,9 @@
 
 Stylized third-person fantasy action RPG — Unity 6 (6000.6.10f1), URP, C#.
 
+The full design brief (world, characters, systems, milestones, standards) is in
+[docs/DESIGN_BRIEF.md](docs/DESIGN_BRIEF.md). Milestones 1–3 are done; Milestone 4 (RPG systems) is next.
+
 ## Running the game
 
 1. Open the folder in Unity Hub with editor **6000.6.10f1**.
